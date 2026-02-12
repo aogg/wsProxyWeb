@@ -56,50 +56,49 @@ async function initWebSocket(): Promise<void> {
         }
       };
     }
-    
-  const wsUrl = config.websocketUrl || 'ws://localhost:8080/ws';
-  
-  console.log('初始化WebSocket连接:', wsUrl);
-  
-  // 读取加密和压缩配置
-  const cryptoConfig: CryptoConfig = config.crypto || {
-    enabled: false,
-    key: '',
-    algorithm: 'aes256gcm'
-  };
-  
-  const compressConfig: CompressConfig = config.compress || {
-    enabled: false,
-    level: 6,
-    algorithm: 'gzip'
-  };
-  
-  // 如果已有连接，先断开
-  if (wsClient) {
-    wsClient.disconnect();
-  }
-  
-  // 创建WebSocket客户端（传入加密和压缩配置）
-  wsClient = new WebSocketClient(wsUrl, cryptoConfig, compressConfig);
 
-  // 监听连接状态变化
-  wsClient.onStatusChange((status: ConnectionStatus) => {
-    console.log('WebSocket连接状态:', status);
-    
-    // 可以通过chrome.storage或chrome.runtime发送状态更新
-    // 这里先简单记录日志
-    updateConnectionStatus(status);
-  });
+    const wsUrl = config.websocketUrl || 'ws://localhost:8080/ws';
 
-  // 监听消息
-  wsClient.onMessage((message) => {
-    console.log('收到WebSocket消息:', message);
-    // 处理服务端返回的响应
-    handleWebSocketResponse(message);
-  });
+    console.log('初始化WebSocket连接:', wsUrl);
 
-  // 连接到服务器
-  wsClient.connect();
+    // 读取加密和压缩配置
+    const cryptoConfig: CryptoConfig = config.crypto || {
+      enabled: false,
+      key: '',
+      algorithm: 'aes256gcm',
+    };
+
+    const compressConfig: CompressConfig = config.compress || {
+      enabled: false,
+      level: 6,
+      algorithm: 'gzip',
+    };
+
+    // 如果已有连接，先断开
+    if (wsClient) {
+      wsClient.disconnect();
+    }
+
+    // 创建WebSocket客户端（传入加密和压缩配置）
+    wsClient = new WebSocketClient(wsUrl, cryptoConfig, compressConfig);
+
+    // 监听连接状态变化
+    wsClient.onStatusChange((status: ConnectionStatus) => {
+      console.log('WebSocket连接状态:', status);
+
+      // 通过storage记录状态，供popup读取
+      updateConnectionStatus(status);
+    });
+
+    // 监听消息
+    wsClient.onMessage((message) => {
+      console.log('收到WebSocket消息:', message);
+      // 处理服务端返回的响应
+      handleWebSocketResponse(message);
+    });
+
+    // 连接到服务器
+    wsClient.connect();
   } catch (error) {
     console.error('初始化WebSocket连接失败:', error);
   }
@@ -108,13 +107,32 @@ async function initWebSocket(): Promise<void> {
 // 更新连接状态（可以发送到popup界面）
 function updateConnectionStatus(status: ConnectionStatus): void {
   // 使用chrome.storage存储连接状态，供popup界面读取
-  chrome.storage.local.set({ 
-    wsConnectionStatus: status,
-    wsConnectionTime: Date.now()
-  }).catch(err => {
-    console.error('保存连接状态失败:', err);
-  });
+  try {
+    chrome.storage.local.set(
+      {
+        wsConnectionStatus: status,
+        wsConnectionTime: Date.now(),
+      },
+      () => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          console.error('保存连接状态失败:', error);
+        }
+      },
+    );
+  } catch (error) {
+    console.error('保存连接状态异常:', error);
+  }
 }
+
+// 监听配置变化，自动重新初始化WebSocket连接
+StorageUtil.onConfigChange((config: ClientConfig) => {
+  console.log('检测到客户端配置变更，重新初始化WebSocket连接');
+  // 使用最新配置重新建立连接
+  initWebSocket().catch((error) => {
+    console.error('因配置变更重新初始化WebSocket失败:', error);
+  });
+});
 
 // 插件安装或启动时初始化
 chrome.runtime.onInstalled.addListener(() => {

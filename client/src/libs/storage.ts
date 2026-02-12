@@ -32,6 +32,48 @@ export class StorageUtil {
   private static readonly KEY_CONNECTION_TIME = 'wsConnectionTime';
 
   /**
+   * 从chrome.storage.local读取数据的Promise封装
+   */
+  private static getFromStorage<T>(
+    keys: string | string[],
+  ): Promise<Record<string, T>> {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage.local.get(keys, (items) => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(items as Record<string, T>);
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 写入chrome.storage.local的Promise封装
+   */
+  private static setToStorage(items: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage.local.set(items, () => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
    * 保存客户端配置
    */
   static async saveConfig(config: Partial<ClientConfig>): Promise<void> {
@@ -40,8 +82,8 @@ export class StorageUtil {
       const existing = await this.getConfig();
       const merged = { ...existing, ...config };
       
-      await chrome.storage.local.set({
-        [this.KEY_CONFIG]: merged
+      await this.setToStorage({
+        [this.KEY_CONFIG]: merged,
       });
     } catch (error) {
       console.error('保存配置失败:', error);
@@ -54,19 +96,24 @@ export class StorageUtil {
    */
   static async getConfig(): Promise<ClientConfig> {
     try {
-      const result = await chrome.storage.local.get(this.KEY_CONFIG);
-      return result[this.KEY_CONFIG] || {
+      const result = await this.getFromStorage<ClientConfig>(this.KEY_CONFIG);
+      const stored = result[this.KEY_CONFIG];
+      if (stored) {
+        return stored;
+      }
+      // 默认配置
+      return {
         websocketUrl: 'ws://localhost:8080/ws',
         crypto: {
           enabled: false,
           key: '',
-          algorithm: 'aes256gcm'
+          algorithm: 'aes256gcm',
         },
         compress: {
           enabled: false,
           level: 6,
-          algorithm: 'gzip'
-        }
+          algorithm: 'gzip',
+        },
       };
     } catch (error) {
       console.error('读取配置失败:', error);
@@ -82,8 +129,8 @@ export class StorageUtil {
       const existing = await this.getRules();
       const merged = { ...existing, ...rules };
       
-      await chrome.storage.local.set({
-        [this.KEY_RULES]: merged
+      await this.setToStorage({
+        [this.KEY_RULES]: merged,
       });
     } catch (error) {
       console.error('保存规则配置失败:', error);
@@ -96,12 +143,17 @@ export class StorageUtil {
    */
   static async getRules(): Promise<RuleConfig> {
     try {
-      const result = await chrome.storage.local.get(this.KEY_RULES);
-      return result[this.KEY_RULES] || {
+      const result = await this.getFromStorage<RuleConfig>(this.KEY_RULES);
+      const stored = result[this.KEY_RULES];
+      if (stored) {
+        return stored;
+      }
+      // 默认规则配置
+      return {
         enabled: true,
         whitelist: [],
         blacklist: [],
-        urlPatterns: []
+        urlPatterns: [],
       };
     } catch (error) {
       console.error('读取规则配置失败:', error);
@@ -114,15 +166,15 @@ export class StorageUtil {
    */
   static async getConnectionStatus(): Promise<{ status: string; time: number } | null> {
     try {
-      const result = await chrome.storage.local.get([
+      const result = await this.getFromStorage<string | number>([
         this.KEY_CONNECTION_STATUS,
-        this.KEY_CONNECTION_TIME
+        this.KEY_CONNECTION_TIME,
       ]);
       
       if (result[this.KEY_CONNECTION_STATUS]) {
         return {
-          status: result[this.KEY_CONNECTION_STATUS],
-          time: result[this.KEY_CONNECTION_TIME] || 0
+          status: String(result[this.KEY_CONNECTION_STATUS]),
+          time: Number(result[this.KEY_CONNECTION_TIME] || 0),
         };
       }
       return null;
@@ -138,7 +190,18 @@ export class StorageUtil {
   static onConfigChange(callback: (config: ClientConfig) => void): void {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local' && changes[this.KEY_CONFIG]) {
-        callback(changes[this.KEY_CONFIG].newValue);
+        callback(changes[this.KEY_CONFIG].newValue as ClientConfig);
+      }
+    });
+  }
+
+  /**
+   * 监听规则配置变化
+   */
+  static onRulesChange(callback: (rules: RuleConfig) => void): void {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes[this.KEY_RULES]) {
+        callback(changes[this.KEY_RULES].newValue as RuleConfig);
       }
     });
   }
@@ -148,12 +211,12 @@ export class StorageUtil {
    */
   static onStatusChange(callback: (status: string, time: number) => void): void {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'local') {
-        if (changes[this.KEY_CONNECTION_STATUS]) {
-          const status = changes[this.KEY_CONNECTION_STATUS].newValue;
-          const time = changes[this.KEY_CONNECTION_TIME]?.newValue || Date.now();
-          callback(status, time);
-        }
+      if (areaName === 'local' && changes[this.KEY_CONNECTION_STATUS]) {
+        const rawStatus = changes[this.KEY_CONNECTION_STATUS].newValue;
+        const rawTime = changes[this.KEY_CONNECTION_TIME]?.newValue;
+        const status = String(rawStatus ?? 'disconnected');
+        const time = typeof rawTime === 'number' ? rawTime : Date.now();
+        callback(status, time);
       }
     });
   }
