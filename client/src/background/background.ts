@@ -3,11 +3,15 @@
 import { WebSocketClient, ConnectionStatus, Message } from '../libs/websocket';
 import { CryptoConfig } from '../libs/crypto';
 import { CompressConfig } from '../libs/compress';
-import { StorageUtil, ClientConfig } from '../libs/storage';
+import { StorageUtil, ClientConfig, RuleConfig } from '../libs/storage';
+import { RuleLib } from '../libs/rule_lib';
 import clientConfig from '../configs/client.json';
 
 // WebSocket客户端实例
 let wsClient: WebSocketClient | null = null;
+
+// 规则匹配实例（用于决定是否代理）
+let ruleLib: RuleLib | null = null;
 
 // 请求ID生成器（用于生成唯一的请求ID）
 let requestIdCounter = 0;
@@ -134,6 +138,16 @@ StorageUtil.onConfigChange((config: ClientConfig) => {
   });
 });
 
+// 监听规则变化，实时更新规则匹配器
+StorageUtil.onRulesChange((rules: RuleConfig) => {
+  try {
+    ruleLib = new RuleLib(rules);
+    console.log('检测到规则配置变更，已更新规则匹配器');
+  } catch (error) {
+    console.error('更新规则匹配器失败:', error);
+  }
+});
+
 // 插件安装或启动时初始化
 chrome.runtime.onInstalled.addListener(() => {
   console.log('插件已安装，初始化WebSocket连接');
@@ -150,6 +164,10 @@ chrome.runtime.onStartup.addListener(() => {
 if (chrome.runtime.id) {
   console.log('WebSocket代理插件已加载');
   initWebSocket();
+  // 初始化规则（优先从storage读取）
+  initRules().catch((error) => {
+    console.error('初始化规则失败:', error);
+  });
   // 初始化请求拦截
   initRequestInterceptor();
 }
@@ -196,6 +214,16 @@ function initRequestInterceptor(): void {
           details.url.startsWith('chrome://') ||
           details.url.startsWith('edge://')) {
         return;
+      }
+
+      // 按规则决定是否需要代理（规则未初始化时默认放行，避免误拦截）
+      if (ruleLib) {
+        const match = ruleLib.shouldProxy(details.url);
+        if (!match.shouldProxy) {
+          // 规则未命中：直接放行，不进入后续代理流程
+          console.log('规则未命中，不代理该请求:', match.reason, details.url);
+          return;
+        }
       }
 
       // 检查是否有缓存的响应（用于返回代理响应）
@@ -311,6 +339,26 @@ function initRequestInterceptor(): void {
   // 实际上，我们需要在收到响应后触发重定向
 
   console.log('请求拦截器初始化完成');
+}
+
+/**
+ * 初始化规则配置（从storage读取，失败则使用默认值）
+ */
+async function initRules(): Promise<void> {
+  try {
+    const rules = await StorageUtil.getRules();
+    ruleLib = new RuleLib(rules);
+    console.log('规则匹配器初始化完成');
+  } catch (error) {
+    console.warn('读取规则配置失败，使用默认规则:', error);
+    const defaultRules: RuleConfig = {
+      enabled: true,
+      whitelist: [],
+      blacklist: [],
+      urlPatterns: [],
+    };
+    ruleLib = new RuleLib(defaultRules);
+  }
 }
 
 /**
