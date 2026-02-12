@@ -1,2 +1,17 @@
 # WebSocket代理服务端配置文件
-# TODO: 添加配置项
+
+# 服务器配置
+server:
+  port: "8080"  # WebSocket服务器监听端口
+
+# 加密配置
+crypto:
+  enabled: false  # 是否启用加密（true/false）
+  key: ""  # 加密密钥（32字节，Base64编码），如果为空则自动生成（仅用于测试）
+  algorithm: "aes256gcm"  # 加密算法：aes256gcm 或 chacha20poly1305
+
+# 压缩配置
+compress:
+  enabled: false  # 是否启用压缩（true/false）
+  level: 6  # 压缩级别：1-9，1最快但压缩率低，9最慢但压缩率高
+  algorithm: "gzip"  # 压缩算法：gzip 或 snappy

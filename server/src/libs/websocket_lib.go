@@ -3,35 +3,64 @@ package libs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
 
 	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 	"wsProxyWeb/server/src/logic"
 	"wsProxyWeb/server/src/types"
 )
 
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
-	port     string
-	clients  map[*websocket.Conn]bool
-	clientsMu sync.RWMutex
-	ctx      context.Context
-	cancel   context.CancelFunc
+	port        string
+	clients     map[*websocket.Conn]bool
+	clientsMu   sync.RWMutex
+	ctx         context.Context
+	cancel      context.CancelFunc
+	cryptoLib   *CryptoLib
+	compressLib *CompressLib
 }
 
 
 // NewWebSocketServer 创建新的WebSocket服务器
 func NewWebSocketServer(port string) *WebSocketServer {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// 加载配置
+	config, err := LoadConfig("")
+	if err != nil {
+		log.Printf("警告: 加载配置失败: %v，使用默认配置", err)
+		config = GetConfig()
+	}
+
+	// 初始化加密库
+	cryptoLib, err := NewCryptoLib(&config.Crypto)
+	if err != nil {
+		log.Printf("警告: 初始化加密库失败: %v，加密功能将被禁用", err)
+		cryptoLib, _ = NewCryptoLib(&CryptoConfig{Enabled: false})
+	}
+
+	// 初始化压缩库
+	compressLib, err := NewCompressLib(&config.Compress)
+	if err != nil {
+		log.Printf("警告: 初始化压缩库失败: %v，压缩功能将被禁用", err)
+		compressLib, _ = NewCompressLib(&CompressConfig{Enabled: false})
+	}
+
+	log.Printf("加密功能: %v (算法: %s)", cryptoLib.IsEnabled(), config.Crypto.Algorithm)
+	log.Printf("压缩功能: %v (算法: %s, 级别: %d)", compressLib.IsEnabled(), config.Compress.Algorithm, config.Compress.Level)
+
 	return &WebSocketServer{
-		port:    port,
-		clients: make(map[*websocket.Conn]bool),
-		ctx:     ctx,
-		cancel:  cancel,
+		port:        port,
+		clients:     make(map[*websocket.Conn]bool),
+		ctx:         ctx,
+		cancel:      cancel,
+		cryptoLib:   cryptoLib,
+		compressLib: compressLib,
 	}
 }
 
@@ -108,11 +137,30 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 	ctx := conn.CloseRead(s.ctx)
 
 	for {
-		var msg types.Message
-		err := wsjson.Read(ctx, conn, &msg)
+		// 读取原始消息（二进制数据）
+		_, rawData, err := conn.Read(ctx)
 		if err != nil {
 			log.Printf("读取消息失败: %v", err)
 			return
+		}
+
+		// 解密 → 解压 → 解析JSON
+		msg, err := s.processIncomingMessage(rawData)
+		if err != nil {
+			log.Printf("处理接收消息失败: %v", err)
+			// 发送错误响应
+			errorResponse := types.Message{
+				ID:   "",
+				Type: "error",
+				Data: map[string]interface{}{
+					"code":    "MESSAGE_PROCESS_ERROR",
+					"message": fmt.Sprintf("处理消息失败: %v", err),
+				},
+			}
+			if err := s.sendMessage(ctx, conn, errorResponse); err != nil {
+				log.Printf("发送错误响应失败: %v", err)
+			}
+			continue
 		}
 
 		log.Printf("收到消息: ID=%s, Type=%s", msg.ID, msg.Type)
@@ -139,7 +187,6 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 					"body":         "",
 					"bodyEncoding": "text",
 				}
-				// 尝试添加error字段（需要自定义结构）
 				log.Printf("处理请求失败: %v", err)
 			} else {
 				response = *responseMsg
@@ -159,12 +206,59 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 			}
 		}
 
-		// 发送响应
-		if err := wsjson.Write(ctx, conn, response); err != nil {
+		// 发送响应（压缩 → 加密 → 发送）
+		if err := s.sendMessage(ctx, conn, response); err != nil {
 			log.Printf("发送消息失败: %v", err)
 			return
 		}
 	}
+}
+
+// processIncomingMessage 处理接收到的消息：解密 → 解压 → 解析JSON
+func (s *WebSocketServer) processIncomingMessage(rawData []byte) (*types.Message, error) {
+	// 步骤1: 解密
+	decryptedData, err := s.cryptoLib.Decrypt(rawData)
+	if err != nil {
+		return nil, fmt.Errorf("解密失败: %v", err)
+	}
+
+	// 步骤2: 解压
+	decompressedData, err := s.compressLib.Decompress(decryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("解压失败: %v", err)
+	}
+
+	// 步骤3: 解析JSON
+	var msg types.Message
+	if err := json.Unmarshal(decompressedData, &msg); err != nil {
+		return nil, fmt.Errorf("解析JSON失败: %v", err)
+	}
+
+	return &msg, nil
+}
+
+// sendMessage 发送消息：序列化JSON → 压缩 → 加密 → 发送
+func (s *WebSocketServer) sendMessage(ctx context.Context, conn *websocket.Conn, msg types.Message) error {
+	// 步骤1: 序列化JSON
+	jsonData, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("序列化JSON失败: %v", err)
+	}
+
+	// 步骤2: 压缩
+	compressedData, err := s.compressLib.Compress(jsonData)
+	if err != nil {
+		return fmt.Errorf("压缩失败: %v", err)
+	}
+
+	// 步骤3: 加密
+	encryptedData, err := s.cryptoLib.Encrypt(compressedData)
+	if err != nil {
+		return fmt.Errorf("加密失败: %v", err)
+	}
+
+	// 步骤4: 发送二进制数据
+	return conn.Write(ctx, websocket.MessageBinary, encryptedData)
 }
 
 // requestLogicInstance 请求处理逻辑实例（单例）
@@ -179,7 +273,7 @@ func getRequestLogic() *logic.RequestLogic {
 }
 
 // handleHTTPRequest 处理HTTP请求
-func (s *WebSocketServer) handleHTTPRequest(msg types.Message) (*types.Message, error) {
+func (s *WebSocketServer) handleHTTPRequest(msg *types.Message) (*types.Message, error) {
 	// 调用logic层处理请求
 	return getRequestLogic().ProcessRequest(msg.Data)
 }
@@ -191,7 +285,7 @@ func (s *WebSocketServer) Broadcast(msg types.Message) error {
 
 	ctx := context.Background()
 	for conn := range s.clients {
-		if err := wsjson.Write(ctx, conn, msg); err != nil {
+		if err := s.sendMessage(ctx, conn, msg); err != nil {
 			log.Printf("广播消息失败: %v", err)
 		}
 	}
@@ -201,5 +295,5 @@ func (s *WebSocketServer) Broadcast(msg types.Message) error {
 // SendToClient 发送消息给指定客户端
 func (s *WebSocketServer) SendToClient(conn *websocket.Conn, msg types.Message) error {
 	ctx := context.Background()
-	return wsjson.Write(ctx, conn, msg)
+	return s.sendMessage(ctx, conn, msg)
 }

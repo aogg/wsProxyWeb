@@ -144,10 +144,13 @@
           "name": "实现Go服务端加密压缩",
           "task": "在服务端实现数据加密和压缩",
           "acceptanceCriteria": "服务端可以正确加密压缩数据",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/src/libs/crypto_lib.go",
-            "server/src/libs/compress_lib.go"
+            "server/src/libs/compress_lib.go",
+            "server/src/libs/config_lib.go",
+            "server/src/configs/server.yaml",
+            "server/src/libs/websocket_lib.go"
           ]
         },
         {
@@ -281,7 +284,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 2,
-    "completedSteps": 8,
-    "completionRate": 38
+    "completedSteps": 9,
+    "completionRate": 43
   }
 }
