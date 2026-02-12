@@ -1,0 +1,5 @@
+{
+  "websocketUrl": "ws://localhost:8080",
+  "encryptionEnabled": true,
+  "compressionEnabled": true
+}
