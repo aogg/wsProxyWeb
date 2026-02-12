@@ -8,8 +8,129 @@
 </head>
 <body>
     <div class="container">
-        <h1>WebSocket代理</h1>
-        <!-- TODO: 添加弹窗界面内容 -->
+        <header class="header">
+            <h1>WebSocket代理</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span class="status-text" id="statusText">未连接</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- 服务端连接配置 -->
+            <section class="config-section">
+                <h2>服务端连接</h2>
+                <div class="form-group">
+                    <label for="websocketUrl">WebSocket地址：</label>
+                    <input 
+                        type="text" 
+                        id="websocketUrl" 
+                        placeholder="ws://localhost:8080/ws"
+                        class="input-field"
+                    />
+                </div>
+                <button id="saveConfigBtn" class="btn btn-primary">保存配置</button>
+            </section>
+
+            <!-- 加密配置 -->
+            <section class="config-section">
+                <h2>加密设置</h2>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="cryptoEnabled" />
+                        <span>启用加密</span>
+                    </label>
+                </div>
+                <div class="form-group" id="cryptoConfigGroup" style="display: none;">
+                    <label for="cryptoKey">加密密钥：</label>
+                    <input 
+                        type="text" 
+                        id="cryptoKey" 
+                        placeholder="32字节密钥（Base64）"
+                        class="input-field"
+                    />
+                    <label for="cryptoAlgorithm">加密算法：</label>
+                    <select id="cryptoAlgorithm" class="select-field">
+                        <option value="aes256gcm">AES-256-GCM</option>
+                        <option value="chacha20poly1305">ChaCha20-Poly1305</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- 压缩配置 -->
+            <section class="config-section">
+                <h2>压缩设置</h2>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="compressEnabled" />
+                        <span>启用压缩</span>
+                    </label>
+                </div>
+                <div class="form-group" id="compressConfigGroup" style="display: none;">
+                    <label for="compressLevel">压缩级别：</label>
+                    <input 
+                        type="range" 
+                        id="compressLevel" 
+                        min="1" 
+                        max="9" 
+                        value="6"
+                        class="range-field"
+                    />
+                    <span id="compressLevelValue">6</span>
+                    <label for="compressAlgorithm">压缩算法：</label>
+                    <select id="compressAlgorithm" class="select-field">
+                        <option value="gzip">Gzip</option>
+                        <option value="deflate">Deflate</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- 拦截规则配置 -->
+            <section class="config-section">
+                <h2>拦截规则</h2>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="rulesEnabled" />
+                        <span>启用请求拦截</span>
+                    </label>
+                </div>
+                <div class="form-group" id="rulesConfigGroup" style="display: none;">
+                    <label for="whitelist">域名白名单（每行一个）：</label>
+                    <textarea 
+                        id="whitelist" 
+                        placeholder="example.com&#10;api.example.com"
+                        class="textarea-field"
+                        rows="3"
+                    ></textarea>
+                    <label for="blacklist">域名黑名单（每行一个）：</label>
+                    <textarea 
+                        id="blacklist" 
+                        placeholder="ads.example.com"
+                        class="textarea-field"
+                        rows="3"
+                    ></textarea>
+                    <label for="urlPatterns">URL模式（每行一个，支持通配符）：</label>
+                    <textarea 
+                        id="urlPatterns" 
+                        placeholder="https://api.example.com/*&#10;*://*.example.com/api/*"
+                        class="textarea-field"
+                        rows="3"
+                    ></textarea>
+                </div>
+            </section>
+
+            <!-- 操作按钮 -->
+            <section class="action-section">
+                <button id="reconnectBtn" class="btn btn-secondary">重新连接</button>
+                <button id="resetBtn" class="btn btn-danger">重置配置</button>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="connection-info" id="connectionInfo">
+                <span>连接时间：<span id="connectionTime">-</span></span>
+            </div>
+        </footer>
     </div>
     <script src="popup.js"></script>
 </body>

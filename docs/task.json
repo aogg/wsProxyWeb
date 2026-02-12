@@ -191,11 +191,12 @@
           "name": "实现浏览器插件配置界面",
           "task": "创建插件弹窗界面，实现配置管理",
           "acceptanceCriteria": "可以通过弹窗界面配置插件",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/src/popup/popup.html",
             "client/src/popup/popup.ts",
-            "client/src/popup/popup.css"
+            "client/src/popup/popup.css",
+            "client/src/libs/storage.ts"
           ]
         },
         {
@@ -288,7 +289,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 3,
-    "completedSteps": 11,
-    "completionRate": 52
+    "completedSteps": 12,
+    "completionRate": 57
   }
 }

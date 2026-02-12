@@ -13,13 +13,28 @@ export class CryptoUtil {
   private key: CryptoKey | null = null;
   private algorithm: string;
   private keyData: Uint8Array | null = null;
+  private initPromise: Promise<void> | null = null;
 
   constructor(config: CryptoConfig) {
     this.enabled = config.enabled;
     this.algorithm = config.algorithm;
     
     if (config.enabled) {
-      this.initKey(config.key);
+      // 启动异步初始化，但不等待
+      this.initPromise = this.initKey(config.key);
+      // 捕获初始化错误，避免未处理的Promise rejection
+      this.initPromise.catch(err => {
+        console.error('加密密钥初始化失败:', err);
+      });
+    }
+  }
+
+  /**
+   * 等待初始化完成
+   */
+  async waitForInit(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 
@@ -66,6 +81,11 @@ export class CryptoUtil {
    * 返回格式：nonce + ciphertext + tag（Uint8Array）
    */
   async encrypt(plaintext: Uint8Array): Promise<Uint8Array> {
+    // 等待初始化完成
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+    
     if (!this.enabled || !this.key) {
       return plaintext;
     }
@@ -82,6 +102,11 @@ export class CryptoUtil {
    * 输入格式：nonce + ciphertext + tag（Uint8Array）
    */
   async decrypt(ciphertext: Uint8Array): Promise<Uint8Array> {
+    // 等待初始化完成
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+    
     if (!this.enabled || !this.key) {
       return ciphertext;
     }

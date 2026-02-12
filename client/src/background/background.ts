@@ -3,6 +3,7 @@
 import { WebSocketClient, ConnectionStatus, Message } from '../libs/websocket';
 import { CryptoConfig } from '../libs/crypto';
 import { CompressConfig } from '../libs/compress';
+import { StorageUtil, ClientConfig } from '../libs/storage';
 import clientConfig from '../configs/client.json';
 
 // WebSocket客户端实例
@@ -33,23 +34,50 @@ const pendingRequests = new Map<number, PendingRequest>(); // key是chrome的req
 const pendingRequestsById = new Map<string, PendingRequest>(); // key是我们生成的requestId，用于响应关联
 
 // 初始化WebSocket连接
-function initWebSocket(): void {
-  const wsUrl = clientConfig.websocketUrl || 'ws://localhost:8080/ws';
+async function initWebSocket(): Promise<void> {
+  try {
+    // 优先从storage读取配置，如果没有则使用默认配置
+    let config: ClientConfig;
+    try {
+      config = await StorageUtil.getConfig();
+    } catch (error) {
+      console.warn('从storage读取配置失败，使用默认配置:', error);
+      config = {
+        websocketUrl: clientConfig.websocketUrl || 'ws://localhost:8080/ws',
+        crypto: (clientConfig as any).crypto || {
+          enabled: false,
+          key: '',
+          algorithm: 'aes256gcm'
+        },
+        compress: (clientConfig as any).compress || {
+          enabled: false,
+          level: 6,
+          algorithm: 'gzip'
+        }
+      };
+    }
+    
+  const wsUrl = config.websocketUrl || 'ws://localhost:8080/ws';
   
   console.log('初始化WebSocket连接:', wsUrl);
   
   // 读取加密和压缩配置
-  const cryptoConfig: CryptoConfig = (clientConfig as any).crypto || {
+  const cryptoConfig: CryptoConfig = config.crypto || {
     enabled: false,
     key: '',
     algorithm: 'aes256gcm'
   };
   
-  const compressConfig: CompressConfig = (clientConfig as any).compress || {
+  const compressConfig: CompressConfig = config.compress || {
     enabled: false,
     level: 6,
     algorithm: 'gzip'
   };
+  
+  // 如果已有连接，先断开
+  if (wsClient) {
+    wsClient.disconnect();
+  }
   
   // 创建WebSocket客户端（传入加密和压缩配置）
   wsClient = new WebSocketClient(wsUrl, cryptoConfig, compressConfig);
@@ -72,6 +100,9 @@ function initWebSocket(): void {
 
   // 连接到服务器
   wsClient.connect();
+  } catch (error) {
+    console.error('初始化WebSocket连接失败:', error);
+  }
 }
 
 // 更新连接状态（可以发送到popup界面）
@@ -109,11 +140,22 @@ if (chrome.runtime.id) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'reconnect') {
     console.log('收到重连请求');
-    if (wsClient) {
-      wsClient.disconnect();
-    }
-    initWebSocket();
-    sendResponse({ success: true });
+    initWebSocket().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('重连失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // 保持消息通道开放以支持异步响应
+  } else if (message.type === 'reloadConfig') {
+    console.log('收到重新加载配置请求');
+    initWebSocket().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('重新加载配置失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // 保持消息通道开放以支持异步响应
   } else if (message.type === 'getStatus') {
     const status = wsClient ? wsClient.getStatus() : ConnectionStatus.Disconnected;
     sendResponse({ status });
