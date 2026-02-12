@@ -11,11 +11,12 @@ import (
 
 // ServerConfig 服务端配置结构
 type ServerConfig struct {
-	Server ServerConfigServer `mapstructure:"server"`
-	Crypto CryptoConfig       `mapstructure:"crypto"`
-	Compress CompressConfig   `mapstructure:"compress"`
-	Security SecurityConfig   `mapstructure:"security"`
-	HTTP   HTTPConfig         `mapstructure:"http"`
+	Server      ServerConfigServer  `mapstructure:"server"`
+	Crypto      CryptoConfig        `mapstructure:"crypto"`
+	Compress    CompressConfig      `mapstructure:"compress"`
+	Security    SecurityConfig      `mapstructure:"security"`
+	HTTP        HTTPConfig          `mapstructure:"http"`
+	Performance PerformanceConfig   `mapstructure:"performance"`
 }
 
 // ServerConfigServer 服务器配置
@@ -160,6 +161,15 @@ func setDefaultConfig() {
 	viper.SetDefault("http.idleConnTimeoutSeconds", 90)
 	viper.SetDefault("http.tlsHandshakeTimeoutSeconds", 10)
 	viper.SetDefault("http.expectContinueTimeoutSeconds", 1)
+
+	// 性能优化默认配置
+	viper.SetDefault("performance.workerPoolSize", 0)        // 默认不使用worker池
+	viper.SetDefault("performance.requestQueueSize", 1000)
+	viper.SetDefault("performance.maxConcurrentConns", 0)    // 不限制
+	viper.SetDefault("performance.bufferPoolSize", 100)
+	viper.SetDefault("performance.chunkSize", 65536)         // 64KB
+	viper.SetDefault("performance.enableMetrics", true)
+	viper.SetDefault("performance.metricsIntervalSec", 30)
 }
 
 // validateConfig 验证配置

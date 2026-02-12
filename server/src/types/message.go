@@ -24,6 +24,11 @@ type ResponseData struct {
 	Headers      map[string]string `json:"headers"`
 	Body         string            `json:"body"`
 	BodyEncoding string            `json:"bodyEncoding"`
+	Chunked      bool              `json:"chunked,omitempty"`      // 是否分块传输
+	Chunks       []string          `json:"chunks,omitempty"`       // 分块数据
+	TotalSize    int               `json:"totalSize,omitempty"`    // 总大小
+	ChunkIndex   int               `json:"chunkIndex,omitempty"`   // 当前块索引（用于客户端重组）
+	ChunkCount   int               `json:"chunkCount,omitempty"`   // 总块数
 }
 
 // HTTPRequestData HTTP请求数据
@@ -42,4 +47,7 @@ type HTTPResponseData struct {
 	Headers      map[string]string `json:"headers"`
 	Body         string            `json:"body"`
 	BodyEncoding string            `json:"bodyEncoding"` // "text" | "base64"
+	Chunked      bool              `json:"chunked,omitempty"`    // 是否分块传输
+	Chunks       []string          `json:"chunks,omitempty"`     // 分块数据
+	TotalSize    int               `json:"totalSize,omitempty"`  // 总大小
 }

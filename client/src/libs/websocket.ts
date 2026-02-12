@@ -19,11 +19,27 @@ export interface Message {
   data?: any;
 }
 
+// 待处理请求
+interface PendingMessage {
+  message: Message;
+  resolve: (success: boolean) => void;
+  reject: (error: Error) => void;
+  timestamp: number;
+}
+
 // 连接状态变化回调
 export type StatusChangeCallback = (status: ConnectionStatus) => void;
 
 // 消息接收回调
 export type MessageCallback = (message: Message) => void;
+
+// 默认配置
+const DEFAULT_CONFIG = {
+  requestQueueSize: 100,      // 请求队列最大长度
+  requestTimeout: 60000,      // 请求超时时间（毫秒）
+  maxRetryAttempts: 3,        // 发送失败最大重试次数
+  retryDelay: 1000,           // 重试延迟（毫秒）
+};
 
 // WebSocket客户端类
 export class WebSocketClient {
@@ -42,6 +58,14 @@ export class WebSocketClient {
   private shouldReconnect: boolean = true;
   private cryptoUtil: CryptoUtil | null = null;
   private compressUtil: CompressUtil | null = null;
+
+  // 请求队列和超时处理
+  private requestQueue: PendingMessage[] = [];
+  private requestQueueSize: number = DEFAULT_CONFIG.requestQueueSize;
+  private requestTimeout: number = DEFAULT_CONFIG.requestTimeout;
+  private maxRetryAttempts: number = DEFAULT_CONFIG.maxRetryAttempts;
+  private retryDelay: number = DEFAULT_CONFIG.retryDelay;
+  private queueCheckTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(url: string, cryptoConfig?: CryptoConfig, compressConfig?: CompressConfig) {
     this.url = url;
@@ -91,6 +115,9 @@ export class WebSocketClient {
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.startHeartbeat();
+        this.startQueueProcessor();
+        // 处理队列中的待发送消息
+        this.flushQueue();
       };
 
       this.ws.onmessage = async (event) => {
@@ -164,7 +191,11 @@ export class WebSocketClient {
   public disconnect(): void {
     this.shouldReconnect = false;
     this.stopHeartbeat();
+    this.stopQueueProcessor();
     this.clearReconnectTimer();
+
+    // 拒绝所有待处理的请求
+    this.rejectAllPending(new Error('连接已断开'));
 
     if (this.ws) {
       this.ws.close();
@@ -175,12 +206,48 @@ export class WebSocketClient {
   }
 
   /**
-   * 发送消息
+   * 发送消息（支持队列和超时）
    */
   public async send(message: Message): Promise<boolean> {
-    if (this.status !== ConnectionStatus.Connected || !this.ws) {
-      console.warn('WebSocket未连接，无法发送消息');
-      return false;
+    return new Promise((resolve, reject) => {
+      // 如果已连接，直接发送
+      if (this.status === ConnectionStatus.Connected && this.ws) {
+        this.sendDirect(message, resolve, reject);
+        return;
+      }
+
+      // 未连接时，加入队列等待
+      if (this.requestQueue.length >= this.requestQueueSize) {
+        // 队列已满，移除最旧的请求
+        const oldest = this.requestQueue.shift();
+        if (oldest) {
+          oldest.reject(new Error('请求队列已满，旧请求被丢弃'));
+        }
+      }
+
+      // 加入队列
+      this.requestQueue.push({
+        message,
+        resolve,
+        reject,
+        timestamp: Date.now(),
+      });
+
+      console.log(`请求已加入队列，当前队列长度: ${this.requestQueue.length}`);
+    });
+  }
+
+  /**
+   * 直接发送消息（内部方法）
+   */
+  private async sendDirect(
+    message: Message,
+    resolve: (success: boolean) => void,
+    reject: (error: Error) => void
+  ): Promise<void> {
+    if (!this.ws) {
+      reject(new Error('WebSocket未连接'));
+      return;
     }
 
     try {
@@ -193,10 +260,10 @@ export class WebSocketClient {
       
       // 发送二进制数据
       this.ws.send(processedData);
-      return true;
+      resolve(true);
     } catch (error) {
       console.error('发送消息失败:', error);
-      return false;
+      reject(error);
     }
   }
 
@@ -380,5 +447,90 @@ export class WebSocketClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+  }
+
+  /**
+   * 启动队列处理器（检查超时）
+   */
+  private startQueueProcessor(): void {
+    this.stopQueueProcessor();
+    
+    this.queueCheckTimer = setInterval(() => {
+      const now = Date.now();
+      const timeoutThreshold = this.requestTimeout;
+      
+      // 检查队列中超时的请求
+      this.requestQueue = this.requestQueue.filter(item => {
+        if (now - item.timestamp > timeoutThreshold) {
+          // 请求超时
+          item.reject(new Error('请求超时'));
+          return false;
+        }
+        return true;
+      });
+    }, 5000); // 每5秒检查一次
+  }
+
+  /**
+   * 停止队列处理器
+   */
+  private stopQueueProcessor(): void {
+    if (this.queueCheckTimer !== null) {
+      clearInterval(this.queueCheckTimer);
+      this.queueCheckTimer = null;
+    }
+  }
+
+  /**
+   * 刷新队列（发送队列中的消息）
+   */
+  private async flushQueue(): Promise<void> {
+    if (this.status !== ConnectionStatus.Connected || !this.ws) {
+      return;
+    }
+
+    while (this.requestQueue.length > 0) {
+      const item = this.requestQueue.shift();
+      if (!item) break;
+
+      try {
+        await this.sendDirect(item.message, item.resolve, item.reject);
+      } catch (error) {
+        item.reject(error as Error);
+      }
+    }
+  }
+
+  /**
+   * 拒绝所有待处理的请求
+   */
+  private rejectAllPending(error: Error): void {
+    while (this.requestQueue.length > 0) {
+      const item = this.requestQueue.shift();
+      if (item) {
+        item.reject(error);
+      }
+    }
+  }
+
+  /**
+   * 获取队列长度
+   */
+  public getQueueLength(): number {
+    return this.requestQueue.length;
+  }
+
+  /**
+   * 设置请求超时时间
+   */
+  public setRequestTimeout(timeout: number): void {
+    this.requestTimeout = timeout;
+  }
+
+  /**
+   * 设置请求队列大小
+   */
+  public setRequestQueueSize(size: number): void {
+    this.requestQueueSize = size;
   }
 }

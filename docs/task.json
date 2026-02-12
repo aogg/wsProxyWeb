@@ -214,7 +214,7 @@
     {
       "id": "stage6",
       "name": "第六阶段：安全控制和优化",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "6.1",
@@ -242,8 +242,16 @@
           "name": "性能优化",
           "task": "优化性能和资源使用",
           "acceptanceCriteria": "系统性能满足基本使用需求",
-          "completed": false,
-          "files": []
+          "completed": true,
+          "files": [
+            "server/src/libs/performance_lib.go",
+            "server/src/libs/websocket_lib.go",
+            "server/src/libs/http_lib.go",
+            "server/src/libs/config_lib.go",
+            "server/src/configs/server.yaml",
+            "server/src/types/message.go",
+            "client/src/libs/websocket.ts"
+          ]
         }
       ]
     },
@@ -288,8 +296,8 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 5,
-    "completedSteps": 13,
-    "completionRate": 62
+    "completedStages": 6,
+    "completedSteps": 18,
+    "completionRate": 86
   }
 }

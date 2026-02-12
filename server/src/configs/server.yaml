@@ -37,3 +37,13 @@ http:
   idleConnTimeoutSeconds: 90 # 空闲连接超时秒数
   tlsHandshakeTimeoutSeconds: 10 # TLS握手超时秒数
   expectContinueTimeoutSeconds: 1 # Expect: 100-continue 超时秒数
+
+# 性能优化配置
+performance:
+  workerPoolSize: 0 # worker池大小（0表示不使用池，每个请求独立goroutine）
+  requestQueueSize: 1000 # 请求队列大小
+  maxConcurrentConns: 0 # 最大并发连接处理数（0表示不限制）
+  bufferPoolSize: 100 # buffer池大小
+  chunkSize: 65536 # 分块传输大小（字节），默认64KB
+  enableMetrics: true # 是否启用性能指标收集
+  metricsIntervalSec: 30 # 指标输出间隔（秒）

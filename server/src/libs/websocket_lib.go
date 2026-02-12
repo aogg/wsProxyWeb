@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"nhooyr.io/websocket"
 	"wsProxyWeb/server/src/logic"
@@ -26,6 +27,7 @@ type WebSocketServer struct {
 	cryptoLib   *CryptoLib
 	compressLib *CompressLib
 	securityLogic *logic.SecurityLogic
+	performanceLib *PerformanceLib
 }
 
 
@@ -79,6 +81,11 @@ func NewWebSocketServer(port string) *WebSocketServer {
 		config.Security.RateBurst,
 	)
 
+	// 初始化性能优化库
+	performanceLib := NewPerformanceLib(&config.Performance)
+	log.Printf("性能优化: workerPool=%d, chunkSize=%d, metrics=%v",
+		config.Performance.WorkerPoolSize, config.Performance.ChunkSize, config.Performance.EnableMetrics)
+
 	return &WebSocketServer{
 		port:        port,
 		clients:     make(map[*websocket.Conn]bool),
@@ -87,6 +94,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 		cryptoLib:   cryptoLib,
 		compressLib: compressLib,
 		securityLogic: securityLogic,
+		performanceLib: performanceLib,
 	}
 }
 
@@ -104,6 +112,12 @@ func (s *WebSocketServer) Start() error {
 // Stop 停止WebSocket服务器
 func (s *WebSocketServer) Stop() {
 	s.cancel()
+	
+	// 停止性能优化库
+	if s.performanceLib != nil {
+		s.performanceLib.Stop()
+	}
+	
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
 	
@@ -137,6 +151,12 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	// 添加客户端
 	s.addClient(conn)
 	defer s.removeClient(conn)
+
+	// 性能指标：增加连接计数
+	if s.performanceLib != nil {
+		s.performanceLib.IncConnection()
+		defer s.performanceLib.DecConnection()
+	}
 
 	log.Printf("新客户端连接: ip=%s, 当前连接数: %d", clientIP, s.getClientCount())
 
@@ -216,6 +236,13 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			response.Type = "pong"
 			response.Data = msg.Data
 		case "request":
+			// 性能指标：记录请求开始
+			if s.performanceLib != nil {
+				s.performanceLib.IncRequest()
+				defer s.performanceLib.DecRequest()
+			}
+			startTime := time.Now()
+			
 			// 安全控制：请求校验（IP/域名/请求体大小/限流）
 			if err := s.securityLogic.CheckRequestMessage(clientIP, msg.Data); err != nil {
 				log.Printf("请求被拒绝: ip=%s, err=%v", clientIP, err)
@@ -245,6 +272,11 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			} else {
 				response = *responseMsg
 				response.ID = msg.ID // 确保ID一致
+			}
+			
+			// 性能指标：记录响应时间
+			if s.performanceLib != nil {
+				s.performanceLib.RecordResponseTime(time.Since(startTime))
 			}
 		case "close":
 			// 关闭消息

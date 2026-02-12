@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +20,9 @@ var (
 	httpClientOnce sync.Once
 	httpClient     *http.Client
 )
+
+// 大响应阈值：超过此大小的响应体使用分块传输
+const largeResponseThreshold = 1024 * 1024 // 1MB
 
 // getHTTPClient 获取全局复用的HTTP客户端（连接池复用，提升性能）
 func getHTTPClient() *http.Client {
@@ -62,6 +66,12 @@ func maxInt(v int, min int) int {
 
 // ExecuteHTTPRequest 执行HTTP请求
 func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData, error) {
+	return ExecuteHTTPRequestWithChunk(reqData, 0)
+}
+
+// ExecuteHTTPRequestWithChunk 执行HTTP请求，支持分块传输
+// chunkSize > 0 时，大响应体会被分块编码
+func ExecuteHTTPRequestWithChunk(reqData types.HTTPRequestData, chunkSize int) (*types.HTTPResponseData, error) {
 	// 准备请求体
 	var bodyReader io.Reader
 	if reqData.Body != "" {
@@ -94,6 +104,7 @@ func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 	}
 
 	// 执行请求
+	startTime := time.Now()
 	resp, err := getHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求执行失败: %v", err)
@@ -106,6 +117,11 @@ func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 		return nil, fmt.Errorf("读取响应体失败: %v", err)
 	}
 
+	// 记录请求耗时
+	elapsed := time.Since(startTime)
+	log.Printf("HTTP请求完成: %s %s, 状态码: %d, 响应大小: %d bytes, 耗时: %v",
+		reqData.Method, reqData.URL, resp.StatusCode, len(bodyBytes), elapsed)
+
 	// 判断响应体是否需要Base64编码
 	// 如果Content-Type是二进制类型（如图片、视频等），使用Base64编码
 	bodyEncoding := "text"
@@ -113,9 +129,19 @@ func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 	contentType := resp.Header.Get("Content-Type")
 	
 	// 判断是否为二进制内容
-	if isBinaryContent(contentType) || len(bodyBytes) > 0 && !isTextContent(bodyBytes) {
+	isBinary := isBinaryContent(contentType) || len(bodyBytes) > 0 && !isTextContent(bodyBytes)
+	if isBinary {
 		bodyEncoding = "base64"
 		bodyStr = base64.StdEncoding.EncodeToString(bodyBytes)
+	}
+
+	// 判断是否需要分块传输
+	chunked := false
+	var chunks []string
+	if chunkSize > 0 && len(bodyBytes) > largeResponseThreshold {
+		chunked = true
+		chunks = splitIntoChunks(bodyBytes, chunkSize, isBinary)
+		log.Printf("大响应体分块传输: 总大小=%d, 块数=%d, 块大小=%d", len(bodyBytes), len(chunks), chunkSize)
 	}
 
 	// 构建响应头映射
@@ -132,9 +158,35 @@ func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 		Headers:      headers,
 		Body:         bodyStr,
 		BodyEncoding: bodyEncoding,
+		Chunked:      chunked,
+		Chunks:       chunks,
+		TotalSize:    len(bodyBytes),
 	}
 
 	return responseData, nil
+}
+
+// splitIntoChunks 将数据分割成块
+func splitIntoChunks(data []byte, chunkSize int, isBinary bool) []string {
+	var chunks []string
+	totalChunks := (len(data) + chunkSize - 1) / chunkSize
+
+	for i := 0; i < totalChunks; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+
+		chunk := data[start:end]
+		if isBinary {
+			chunks = append(chunks, base64.StdEncoding.EncodeToString(chunk))
+		} else {
+			chunks = append(chunks, string(chunk))
+		}
+	}
+
+	return chunks
 }
 
 // isBinaryContent 判断Content-Type是否为二进制类型
