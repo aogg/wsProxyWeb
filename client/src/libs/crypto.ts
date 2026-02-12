@@ -57,7 +57,7 @@ export class CryptoUtil {
         // AES-256-GCM
         this.key = await crypto.subtle.importKey(
           'raw',
-          keyBytes,
+          keyBytes as unknown as BufferSource,
           { name: 'AES-GCM' },
           false,
           ['encrypt', 'decrypt']
@@ -137,7 +137,7 @@ export class CryptoUtil {
         tagLength: 128 // 16字节的认证标签
       },
       this.key,
-      plaintext
+      plaintext as unknown as BufferSource
     );
 
     // 组合 nonce + ciphertext
@@ -174,7 +174,7 @@ export class CryptoUtil {
           tagLength: 128
         },
         this.key!,
-        encryptedData
+        encryptedData as unknown as BufferSource
       );
 
       return new Uint8Array(plaintext);

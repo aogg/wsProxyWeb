@@ -478,7 +478,7 @@ func TestExecuteHTTPRequestWithChunk_LargeResponse(t *testing.T) {
 	}
 
 	// 验证可以重组数据
-	var重组后的数据[]byte
+	var 重组后的数据 []byte
 	for _, chunk := range resp.Chunks {
 		decoded, err := base64.StdEncoding.DecodeString(chunk)
 		if err != nil {

@@ -281,8 +281,11 @@
           "name": "集成测试",
           "task": "测试端到端流程",
           "acceptanceCriteria": "端到端流程正常工作",
-          "completed": false,
-          "files": []
+          "completed": true,
+          "files": [
+            "server/src/tests/integration_test.go",
+            "client/src/tests/integration.test.ts"
+          ]
         },
         {
           "id": "7.3",
@@ -302,7 +305,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 6,
-    "completedSteps": 19,
-    "completionRate": 90
+    "completedSteps": 20,
+    "completionRate": 95
   }
 }

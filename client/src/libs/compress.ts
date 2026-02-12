@@ -86,7 +86,7 @@ export class CompressUtil {
       const reader = stream.readable.getReader();
 
       // 写入数据
-      writer.write(data);
+      writer.write(data as unknown as BufferSource);
       writer.close();
 
       // 读取压缩后的数据
@@ -131,7 +131,7 @@ export class CompressUtil {
       const reader = stream.readable.getReader();
 
       // 写入数据
-      writer.write(data);
+      writer.write(data as unknown as BufferSource);
       writer.close();
 
       // 读取解压后的数据

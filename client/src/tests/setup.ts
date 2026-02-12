@@ -132,6 +132,11 @@ class MockDecompressionStream {
   return Buffer.from(str, 'binary').toString('base64');
 };
 
+// 模拟 TextEncoder 和 TextDecoder
+import { TextEncoder, TextDecoder } from 'util';
+(global as any).TextEncoder = TextEncoder;
+(global as any).TextDecoder = TextDecoder;
+
 // 清理每个测试后的模拟
 afterEach(() => {
   jest.clearAllMocks();
