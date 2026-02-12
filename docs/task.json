@@ -65,7 +65,7 @@
           "name": "实现Go服务端WebSocket基础框架",
           "task": "创建Go服务端，建立WebSocket服务器",
           "acceptanceCriteria": "服务端可以启动，客户端可以建立WebSocket连接",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/main.go",
             "server/src/libs/websocket_lib.go"
@@ -279,7 +279,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 1,
-    "completedSteps": 4,
-    "completionRate": 19
+    "completedSteps": 5,
+    "completionRate": 24
   }
 }
