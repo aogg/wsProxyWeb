@@ -13,7 +13,7 @@
           "name": "创建项目目录结构",
           "task": "创建完整的项目目录结构，客户端和服务端分离",
           "acceptanceCriteria": "所有目录创建完成，空文件占位",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/",
             "client/",
@@ -25,7 +25,7 @@
           "name": "初始化服务端Go项目",
           "task": "在server目录创建Go模块，添加基础依赖",
           "acceptanceCriteria": "server/go.mod 文件存在，依赖下载成功",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/go.mod",
             "server/main.go"
@@ -36,7 +36,7 @@
           "name": "初始化客户端npm项目",
           "task": "在client目录创建npm项目，配置打包工具",
           "acceptanceCriteria": "client/package.json 文件存在，可以运行 npm run build 生成dist目录，manifest.json可以正确复制到dist目录",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/package.json",
             "client/webpack.config.js",
