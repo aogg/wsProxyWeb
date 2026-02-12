@@ -1,1 +1,16 @@
 .history
+
+# Go编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server/server.exe
+
+# Go测试编译文件
+server/runtimes/tests/*.exe
+
+# Node模块
+client/node_modules/
+client/dist/
