@@ -114,10 +114,11 @@
           "name": "实现Go服务端HTTP请求执行",
           "task": "接收请求数据，执行真实的HTTP请求",
           "acceptanceCriteria": "服务端可以接收请求并返回正确的响应",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/src/logic/request_logic.go",
-            "server/src/libs/http_lib.go"
+            "server/src/libs/http_lib.go",
+            "server/src/types/message.go"
           ]
         },
         {

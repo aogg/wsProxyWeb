@@ -3,12 +3,15 @@ package libs
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
 
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
+	"wsProxyWeb/server/src/logic"
+	"wsProxyWeb/server/src/types"
 )
 
 // WebSocketServer WebSocket服务器结构
@@ -20,12 +23,6 @@ type WebSocketServer struct {
 	cancel   context.CancelFunc
 }
 
-// Message 消息结构
-type Message struct {
-	ID   string      `json:"id"`
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
 
 // NewWebSocketServer 创建新的WebSocket服务器
 func NewWebSocketServer(port string) *WebSocketServer {
@@ -111,7 +108,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 	ctx := conn.CloseRead(s.ctx)
 
 	for {
-		var msg Message
+		var msg types.Message
 		err := wsjson.Read(ctx, conn, &msg)
 		if err != nil {
 			log.Printf("读取消息失败: %v", err)
@@ -120,15 +117,49 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 
 		log.Printf("收到消息: ID=%s, Type=%s", msg.ID, msg.Type)
 
-		// 回显消息（后续会改为处理请求）
-		response := Message{
-			ID:   msg.ID,
-			Type: "echo",
-			Data: map[string]string{
-				"message": "收到消息",
-			},
+		// 处理不同类型的消息
+		var response types.Message
+		response.ID = msg.ID
+
+		switch msg.Type {
+		case "ping":
+			// 心跳消息，回复pong
+			response.Type = "pong"
+			response.Data = msg.Data
+		case "request":
+			// HTTP请求消息，调用请求处理逻辑
+			responseMsg, err := s.handleHTTPRequest(msg)
+			if err != nil {
+				// 返回错误响应
+				response.Type = "response"
+				response.Data = map[string]interface{}{
+					"status":       0,
+					"statusText":   "Error",
+					"headers":      make(map[string]string),
+					"body":         "",
+					"bodyEncoding": "text",
+				}
+				// 尝试添加error字段（需要自定义结构）
+				log.Printf("处理请求失败: %v", err)
+			} else {
+				response = *responseMsg
+				response.ID = msg.ID // 确保ID一致
+			}
+		case "close":
+			// 关闭消息
+			log.Printf("收到关闭消息: %v", msg.Data)
+			return
+		default:
+			// 未知消息类型，返回错误
+			response.Type = "error"
+			response.Data = map[string]interface{}{
+				"code":    "UNKNOWN_MESSAGE_TYPE",
+				"message": fmt.Sprintf("未知的消息类型: %s", msg.Type),
+				"details": make(map[string]interface{}),
+			}
 		}
 
+		// 发送响应
 		if err := wsjson.Write(ctx, conn, response); err != nil {
 			log.Printf("发送消息失败: %v", err)
 			return
@@ -136,8 +167,25 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 	}
 }
 
+// requestLogicInstance 请求处理逻辑实例（单例）
+var requestLogicInstance *logic.RequestLogic
+
+// getRequestLogic 获取请求处理逻辑实例
+func getRequestLogic() *logic.RequestLogic {
+	if requestLogicInstance == nil {
+		requestLogicInstance = logic.NewRequestLogic()
+	}
+	return requestLogicInstance
+}
+
+// handleHTTPRequest 处理HTTP请求
+func (s *WebSocketServer) handleHTTPRequest(msg types.Message) (*types.Message, error) {
+	// 调用logic层处理请求
+	return getRequestLogic().ProcessRequest(msg.Data)
+}
+
 // Broadcast 广播消息给所有客户端
-func (s *WebSocketServer) Broadcast(msg Message) error {
+func (s *WebSocketServer) Broadcast(msg types.Message) error {
 	s.clientsMu.RLock()
 	defer s.clientsMu.RUnlock()
 
@@ -151,7 +199,7 @@ func (s *WebSocketServer) Broadcast(msg Message) error {
 }
 
 // SendToClient 发送消息给指定客户端
-func (s *WebSocketServer) SendToClient(conn *websocket.Conn, msg Message) error {
+func (s *WebSocketServer) SendToClient(conn *websocket.Conn, msg types.Message) error {
 	ctx := context.Background()
 	return wsjson.Write(ctx, conn, msg)
 }
