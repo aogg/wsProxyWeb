@@ -258,7 +258,7 @@
     {
       "id": "stage7",
       "name": "第七阶段：测试和文档",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "7.1",
@@ -292,7 +292,7 @@
           "name": "编写使用文档",
           "task": "编写用户使用文档和开发文档",
           "acceptanceCriteria": "文档完整清晰",
-          "completed": false,
+          "completed": true,
           "files": [
             "docs/使用说明.md",
             "docs/开发文档.md"
@@ -304,8 +304,8 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 6,
-    "completedSteps": 20,
-    "completionRate": 95
+    "completedStages": 7,
+    "completedSteps": 21,
+    "completionRate": 100
   }
 }
