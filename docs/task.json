@@ -76,7 +76,7 @@
           "name": "实现浏览器插件WebSocket客户端",
           "task": "在插件后台脚本中实现WebSocket连接",
           "acceptanceCriteria": "插件可以连接到服务端，连接状态正常显示",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/src/background/background.ts",
             "client/src/libs/websocket.ts"
@@ -279,7 +279,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 1,
-    "completedSteps": 5,
-    "completionRate": 24
+    "completedSteps": 6,
+    "completionRate": 29
   }
 }
