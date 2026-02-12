@@ -6,20 +6,62 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"wsProxyWeb/server/src/types"
 )
 
+var (
+	httpClientOnce sync.Once
+	httpClient     *http.Client
+)
+
+// getHTTPClient 获取全局复用的HTTP客户端（连接池复用，提升性能）
+func getHTTPClient() *http.Client {
+	httpClientOnce.Do(func() {
+		cfg := GetConfig()
+
+		timeout := time.Duration(cfg.HTTP.TimeoutSeconds) * time.Second
+		if timeout <= 0 {
+			timeout = 30 * time.Second
+		}
+
+		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          maxInt(cfg.HTTP.MaxIdleConns, 0),
+			MaxIdleConnsPerHost:   maxInt(cfg.HTTP.MaxIdleConnsPerHost, 0),
+			IdleConnTimeout:       time.Duration(maxInt(cfg.HTTP.IdleConnTimeoutSeconds, 0)) * time.Second,
+			TLSHandshakeTimeout:   time.Duration(maxInt(cfg.HTTP.TLSHandshakeTimeoutSeconds, 0)) * time.Second,
+			ExpectContinueTimeout: time.Duration(maxInt(cfg.HTTP.ExpectContinueTimeoutSeconds, 0)) * time.Second,
+		}
+
+		httpClient = &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+		}
+	})
+
+	return httpClient
+}
+
+func maxInt(v int, min int) int {
+	if v < min {
+		return min
+	}
+	return v
+}
+
 // ExecuteHTTPRequest 执行HTTP请求
 func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData, error) {
-	// 创建HTTP客户端，设置超时时间30秒
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
 	// 准备请求体
 	var bodyReader io.Reader
 	if reqData.Body != "" {
@@ -52,7 +94,7 @@ func ExecuteHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 	}
 
 	// 执行请求
-	resp, err := client.Do(req)
+	resp, err := getHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求执行失败: %v", err)
 	}

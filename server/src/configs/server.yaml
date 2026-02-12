@@ -28,3 +28,12 @@ security:
   denyIPs: [] # 拒绝IP列表，支持单IP或CIDR
   allowDomains: [] # 允许域名列表，支持*.example.com（为空表示不限制）
   denyDomains: [] # 拒绝域名列表，支持*.example.com
+
+# HTTP客户端配置（用于服务端转发请求，连接池复用以提升性能）
+http:
+  timeoutSeconds: 30 # 请求总超时秒数
+  maxIdleConns: 200 # 全局最大空闲连接数
+  maxIdleConnsPerHost: 50 # 单host最大空闲连接数
+  idleConnTimeoutSeconds: 90 # 空闲连接超时秒数
+  tlsHandshakeTimeoutSeconds: 10 # TLS握手超时秒数
+  expectContinueTimeoutSeconds: 1 # Expect: 100-continue 超时秒数

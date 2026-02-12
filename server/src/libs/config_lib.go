@@ -15,6 +15,7 @@ type ServerConfig struct {
 	Crypto CryptoConfig       `mapstructure:"crypto"`
 	Compress CompressConfig   `mapstructure:"compress"`
 	Security SecurityConfig   `mapstructure:"security"`
+	HTTP   HTTPConfig         `mapstructure:"http"`
 }
 
 // ServerConfigServer 服务器配置
@@ -50,6 +51,16 @@ type SecurityConfig struct {
 	DenyIPs      []string `mapstructure:"denyIPs"`      // 拒绝IP列表，支持单IP或CIDR
 	AllowDomains []string `mapstructure:"allowDomains"` // 允许域名列表，支持*.example.com（为空表示不限制）
 	DenyDomains  []string `mapstructure:"denyDomains"`  // 拒绝域名列表，支持*.example.com
+}
+
+// HTTPConfig HTTP客户端配置（用于服务端转发请求）
+type HTTPConfig struct {
+	TimeoutSeconds               int `mapstructure:"timeoutSeconds"`               // 请求总超时秒数
+	MaxIdleConns                 int `mapstructure:"maxIdleConns"`                 // 全局最大空闲连接
+	MaxIdleConnsPerHost          int `mapstructure:"maxIdleConnsPerHost"`          // 单host最大空闲连接
+	IdleConnTimeoutSeconds       int `mapstructure:"idleConnTimeoutSeconds"`       // 空闲连接超时秒数
+	TLSHandshakeTimeoutSeconds   int `mapstructure:"tlsHandshakeTimeoutSeconds"`   // TLS握手超时秒数
+	ExpectContinueTimeoutSeconds int `mapstructure:"expectContinueTimeoutSeconds"` // Expect: 100-continue 超时秒数
 }
 
 var globalConfig *ServerConfig
@@ -141,6 +152,14 @@ func setDefaultConfig() {
 	viper.SetDefault("security.denyIPs", []string{})
 	viper.SetDefault("security.allowDomains", []string{})
 	viper.SetDefault("security.denyDomains", []string{})
+
+	// HTTP客户端默认配置（连接池复用）
+	viper.SetDefault("http.timeoutSeconds", 30)
+	viper.SetDefault("http.maxIdleConns", 200)
+	viper.SetDefault("http.maxIdleConnsPerHost", 50)
+	viper.SetDefault("http.idleConnTimeoutSeconds", 90)
+	viper.SetDefault("http.tlsHandshakeTimeoutSeconds", 10)
+	viper.SetDefault("http.expectContinueTimeoutSeconds", 1)
 }
 
 // validateConfig 验证配置
@@ -180,6 +199,26 @@ func validateConfig(config *ServerConfig) error {
 	}
 	if config.Security.RateBurst < 0 {
 		return fmt.Errorf("rateBurst不能小于0，当前值: %d", config.Security.RateBurst)
+	}
+
+	// 验证HTTP客户端配置
+	if config.HTTP.TimeoutSeconds <= 0 {
+		return fmt.Errorf("http.timeoutSeconds必须大于0，当前值: %d", config.HTTP.TimeoutSeconds)
+	}
+	if config.HTTP.MaxIdleConns < 0 {
+		return fmt.Errorf("http.maxIdleConns不能小于0，当前值: %d", config.HTTP.MaxIdleConns)
+	}
+	if config.HTTP.MaxIdleConnsPerHost < 0 {
+		return fmt.Errorf("http.maxIdleConnsPerHost不能小于0，当前值: %d", config.HTTP.MaxIdleConnsPerHost)
+	}
+	if config.HTTP.IdleConnTimeoutSeconds < 0 {
+		return fmt.Errorf("http.idleConnTimeoutSeconds不能小于0，当前值: %d", config.HTTP.IdleConnTimeoutSeconds)
+	}
+	if config.HTTP.TLSHandshakeTimeoutSeconds < 0 {
+		return fmt.Errorf("http.tlsHandshakeTimeoutSeconds不能小于0，当前值: %d", config.HTTP.TLSHandshakeTimeoutSeconds)
+	}
+	if config.HTTP.ExpectContinueTimeoutSeconds < 0 {
+		return fmt.Errorf("http.expectContinueTimeoutSeconds不能小于0，当前值: %d", config.HTTP.ExpectContinueTimeoutSeconds)
 	}
 
 	return nil

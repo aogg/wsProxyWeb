@@ -8,12 +8,45 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"wsProxyWeb/server/src/types"
 )
+
+var (
+	httpClientOnce sync.Once
+	httpClient     *http.Client
+)
+
+// getHTTPClient 获取全局复用的HTTP客户端（连接池复用，提升性能）
+func getHTTPClient() *http.Client {
+	httpClientOnce.Do(func() {
+		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          200,
+			MaxIdleConnsPerHost:   50,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		httpClient = &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		}
+	})
+
+	return httpClient
+}
 
 // RequestLogic HTTP请求处理逻辑类
 type RequestLogic struct {
@@ -151,11 +184,6 @@ func (rl *RequestLogic) buildErrorResponse(err error) *types.Message {
 
 // executeHTTPRequest 执行HTTP请求（内部函数，避免循环导入）
 func executeHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData, error) {
-	// 创建HTTP客户端，设置超时时间30秒
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
 	// 准备请求体
 	var bodyReader io.Reader
 	if reqData.Body != "" {
@@ -188,7 +216,7 @@ func executeHTTPRequest(reqData types.HTTPRequestData) (*types.HTTPResponseData,
 	}
 
 	// 执行请求
-	resp, err := client.Do(req)
+	resp, err := getHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求执行失败: %v", err)
 	}
