@@ -1,12 +1,12 @@
 {
   "project": "WebSocket代理网页请求系统",
   "version": "1.0.0",
-  "lastUpdated": "",
+  "lastUpdated": "2025-01-27",
   "stages": [
     {
       "id": "stage1",
       "name": "第一阶段：项目基础架构搭建",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "1.1",
@@ -48,7 +48,7 @@
           "name": "创建浏览器插件基础配置",
           "task": "创建 client/public/manifest.json，配置插件基本信息",
           "acceptanceCriteria": "manifest.json 文件创建，打包后可以在Chrome/Edge中加载插件（即使功能未实现）",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/public/manifest.json"
           ]
@@ -278,8 +278,8 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 0,
-    "completedSteps": 0,
-    "completionRate": 0
+    "completedStages": 1,
+    "completedSteps": 4,
+    "completionRate": 19
   }
 }

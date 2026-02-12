@@ -5,7 +5,8 @@
   "description": "通过WebSocket代理网页请求",
   "permissions": [
     "webRequest",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "background": {
     "service_worker": "background.js"
