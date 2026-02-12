@@ -104,7 +104,7 @@
           "name": "实现浏览器插件请求拦截",
           "task": "拦截网页的HTTP/HTTPS请求",
           "acceptanceCriteria": "可以拦截网页请求并发送到服务端",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/src/background/background.ts"
           ]
@@ -279,7 +279,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 2,
-    "completedSteps": 7,
-    "completionRate": 33
+    "completedSteps": 8,
+    "completionRate": 38
   }
 }
