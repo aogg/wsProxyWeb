@@ -58,7 +58,7 @@
     {
       "id": "stage2",
       "name": "第二阶段：基础WebSocket通信",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "2.1",
@@ -87,7 +87,7 @@
           "name": "定义通信协议",
           "task": "定义客户端和服务端之间的消息格式",
           "acceptanceCriteria": "协议文档清晰，双方可以正确解析消息",
-          "completed": false,
+          "completed": true,
           "files": [
             "docs/协议说明.md"
           ]
@@ -278,8 +278,8 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 1,
-    "completedSteps": 6,
-    "completionRate": 29
+    "completedStages": 2,
+    "completedSteps": 7,
+    "completionRate": 33
   }
 }
