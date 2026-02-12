@@ -232,7 +232,7 @@
           "name": "实现服务端安全控制",
           "task": "添加服务端安全限制",
           "acceptanceCriteria": "服务端有基本的安全防护",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/src/logic/security_logic.go"
           ]

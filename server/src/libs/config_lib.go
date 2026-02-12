@@ -14,6 +14,7 @@ type ServerConfig struct {
 	Server ServerConfigServer `mapstructure:"server"`
 	Crypto CryptoConfig       `mapstructure:"crypto"`
 	Compress CompressConfig   `mapstructure:"compress"`
+	Security SecurityConfig   `mapstructure:"security"`
 }
 
 // ServerConfigServer 服务器配置
@@ -33,6 +34,22 @@ type CompressConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Level   int    `mapstructure:"level"`   // 压缩级别：1-9，默认6
 	Algorithm string `mapstructure:"algorithm"` // 压缩算法：gzip 或 snappy
+}
+
+// SecurityConfig 安全控制配置
+type SecurityConfig struct {
+	Enabled             bool     `mapstructure:"enabled"`
+	MaxConnections      int      `mapstructure:"maxConnections"`      // 最大连接数（0表示不限制）
+	MaxMessageBytes     int      `mapstructure:"maxMessageBytes"`     // 单条消息最大字节数（0表示不限制，指解密前rawData大小）
+	MaxRequestBodyBytes int      `mapstructure:"maxRequestBodyBytes"` // 请求体最大字节数（0表示不限制，指解码后的字节数）
+
+	RateLimitPerSecond float64  `mapstructure:"rateLimitPerSecond"` // 每秒允许的请求数（<=0表示不限制）
+	RateBurst          int      `mapstructure:"rateBurst"`          // 突发容量（<=0时将按rate自动给默认值）
+
+	AllowIPs     []string `mapstructure:"allowIPs"`     // 允许IP列表，支持单IP或CIDR（为空表示不限制）
+	DenyIPs      []string `mapstructure:"denyIPs"`      // 拒绝IP列表，支持单IP或CIDR
+	AllowDomains []string `mapstructure:"allowDomains"` // 允许域名列表，支持*.example.com（为空表示不限制）
+	DenyDomains  []string `mapstructure:"denyDomains"`  // 拒绝域名列表，支持*.example.com
 }
 
 var globalConfig *ServerConfig
@@ -112,6 +129,18 @@ func setDefaultConfig() {
 	viper.SetDefault("compress.enabled", false)
 	viper.SetDefault("compress.level", 6)
 	viper.SetDefault("compress.algorithm", "gzip")
+
+	// 安全控制默认配置（默认启用，但规则为空时等于“全放行”，仅做基础限流/限大小/限连接）
+	viper.SetDefault("security.enabled", true)
+	viper.SetDefault("security.maxConnections", 50)
+	viper.SetDefault("security.maxMessageBytes", 2*1024*1024)     // 2MB
+	viper.SetDefault("security.maxRequestBodyBytes", 5*1024*1024) // 5MB
+	viper.SetDefault("security.rateLimitPerSecond", 50.0)
+	viper.SetDefault("security.rateBurst", 100)
+	viper.SetDefault("security.allowIPs", []string{})
+	viper.SetDefault("security.denyIPs", []string{})
+	viper.SetDefault("security.allowDomains", []string{})
+	viper.SetDefault("security.denyDomains", []string{})
 }
 
 // validateConfig 验证配置
@@ -134,6 +163,23 @@ func validateConfig(config *ServerConfig) error {
 		if config.Compress.Algorithm != "gzip" && config.Compress.Algorithm != "snappy" {
 			return fmt.Errorf("不支持的压缩算法: %s，支持: gzip, snappy", config.Compress.Algorithm)
 		}
+	}
+
+	// 验证安全控制配置
+	if config.Security.MaxConnections < 0 {
+		return fmt.Errorf("maxConnections不能小于0，当前值: %d", config.Security.MaxConnections)
+	}
+	if config.Security.MaxMessageBytes < 0 {
+		return fmt.Errorf("maxMessageBytes不能小于0，当前值: %d", config.Security.MaxMessageBytes)
+	}
+	if config.Security.MaxRequestBodyBytes < 0 {
+		return fmt.Errorf("maxRequestBodyBytes不能小于0，当前值: %d", config.Security.MaxRequestBodyBytes)
+	}
+	if config.Security.RateLimitPerSecond < 0 {
+		return fmt.Errorf("rateLimitPerSecond不能小于0，当前值: %f", config.Security.RateLimitPerSecond)
+	}
+	if config.Security.RateBurst < 0 {
+		return fmt.Errorf("rateBurst不能小于0，当前值: %d", config.Security.RateBurst)
 	}
 
 	return nil

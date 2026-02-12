@@ -15,3 +15,16 @@ compress:
   enabled: false  # 是否启用压缩（true/false）
   level: 6  # 压缩级别：1-9，1最快但压缩率低，9最慢但压缩率高
   algorithm: "gzip"  # 压缩算法：gzip 或 snappy
+
+# 安全控制配置
+security:
+  enabled: true # 是否启用安全控制
+  maxConnections: 50 # 最大连接数（0表示不限制）
+  maxMessageBytes: 2097152 # 单条消息最大字节数（0表示不限制，指解密前rawData大小）
+  maxRequestBodyBytes: 5242880 # 请求体最大字节数（0表示不限制，指解码后的字节数）
+  rateLimitPerSecond: 50 # 每秒允许的请求数（<=0表示不限制）
+  rateBurst: 100 # 突发容量（<=0时将按rate自动给默认值）
+  allowIPs: [] # 允许IP列表，支持单IP或CIDR（为空表示不限制）
+  denyIPs: [] # 拒绝IP列表，支持单IP或CIDR
+  allowDomains: [] # 允许域名列表，支持*.example.com（为空表示不限制）
+  denyDomains: [] # 拒绝域名列表，支持*.example.com

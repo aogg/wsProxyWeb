@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"nhooyr.io/websocket"
@@ -23,6 +25,7 @@ type WebSocketServer struct {
 	cancel      context.CancelFunc
 	cryptoLib   *CryptoLib
 	compressLib *CompressLib
+	securityLogic *logic.SecurityLogic
 }
 
 
@@ -54,6 +57,28 @@ func NewWebSocketServer(port string) *WebSocketServer {
 	log.Printf("加密功能: %v (算法: %s)", cryptoLib.IsEnabled(), config.Crypto.Algorithm)
 	log.Printf("压缩功能: %v (算法: %s, 级别: %d)", compressLib.IsEnabled(), config.Compress.Algorithm, config.Compress.Level)
 
+	// 初始化安全控制逻辑（默认启用，但规则为空时基本不影响）
+	securityLogic := logic.NewSecurityLogic(logic.SecurityLogicConfig{
+		Enabled:             config.Security.Enabled,
+		MaxConnections:      config.Security.MaxConnections,
+		MaxMessageBytes:     config.Security.MaxMessageBytes,
+		MaxRequestBodyBytes: config.Security.MaxRequestBodyBytes,
+		RateLimitPerSecond:  config.Security.RateLimitPerSecond,
+		RateBurst:           config.Security.RateBurst,
+		AllowIPs:            config.Security.AllowIPs,
+		DenyIPs:             config.Security.DenyIPs,
+		AllowDomains:        config.Security.AllowDomains,
+		DenyDomains:         config.Security.DenyDomains,
+	})
+	log.Printf("安全控制: %v (最大连接:%d, 最大消息:%dB, 最大请求体:%dB, 限流:%g/s, burst:%d)",
+		securityLogic.IsEnabled(),
+		config.Security.MaxConnections,
+		config.Security.MaxMessageBytes,
+		config.Security.MaxRequestBodyBytes,
+		config.Security.RateLimitPerSecond,
+		config.Security.RateBurst,
+	)
+
 	return &WebSocketServer{
 		port:        port,
 		clients:     make(map[*websocket.Conn]bool),
@@ -61,6 +86,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 		cancel:      cancel,
 		cryptoLib:   cryptoLib,
 		compressLib: compressLib,
+		securityLogic: securityLogic,
 	}
 }
 
@@ -100,14 +126,22 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	}
 	defer conn.Close(websocket.StatusInternalError, "连接关闭")
 
+	clientIP := getClientIP(r)
+	// 安全控制：连接数限制、IP白黑名单
+	if err := s.securityLogic.CheckNewConnection(clientIP, s.getClientCount()); err != nil {
+		log.Printf("拒绝连接: ip=%s, err=%v", clientIP, err)
+		conn.Close(websocket.StatusPolicyViolation, "连接被拒绝: "+err.Error())
+		return
+	}
+
 	// 添加客户端
 	s.addClient(conn)
 	defer s.removeClient(conn)
 
-	log.Printf("新客户端连接，当前连接数: %d", s.getClientCount())
+	log.Printf("新客户端连接: ip=%s, 当前连接数: %d", clientIP, s.getClientCount())
 
 	// 处理消息
-	s.handleMessages(conn)
+	s.handleMessages(conn, clientIP)
 }
 
 // addClient 添加客户端
@@ -133,7 +167,7 @@ func (s *WebSocketServer) getClientCount() int {
 }
 
 // handleMessages 处理客户端消息
-func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
+func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) {
 	ctx := conn.CloseRead(s.ctx)
 
 	for {
@@ -141,6 +175,13 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 		_, rawData, err := conn.Read(ctx)
 		if err != nil {
 			log.Printf("读取消息失败: %v", err)
+			return
+		}
+
+		// 安全控制：消息大小限制（解密前）
+		if err := s.securityLogic.CheckRawMessageSize(len(rawData)); err != nil {
+			log.Printf("消息被拒绝: ip=%s, err=%v", clientIP, err)
+			conn.Close(websocket.StatusPolicyViolation, "消息被拒绝: "+err.Error())
 			return
 		}
 
@@ -175,6 +216,19 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 			response.Type = "pong"
 			response.Data = msg.Data
 		case "request":
+			// 安全控制：请求校验（IP/域名/请求体大小/限流）
+			if err := s.securityLogic.CheckRequestMessage(clientIP, msg.Data); err != nil {
+				log.Printf("请求被拒绝: ip=%s, err=%v", clientIP, err)
+				response.Type = "response"
+				response.Data = map[string]interface{}{
+					"status":       0,
+					"statusText":   "SecurityDenied",
+					"headers":      make(map[string]string),
+					"body":         err.Error(),
+					"bodyEncoding": "text",
+				}
+				break
+			}
 			// HTTP请求消息，调用请求处理逻辑
 			responseMsg, err := s.handleHTTPRequest(msg)
 			if err != nil {
@@ -212,6 +266,29 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn) {
 			return
 		}
 	}
+}
+
+// getClientIP 获取客户端IP（优先使用X-Forwarded-For，但本项目默认直连一般取RemoteAddr即可）
+func getClientIP(r *http.Request) string {
+	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			ip := strings.TrimSpace(parts[0])
+			if net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && net.ParseIP(host) != nil {
+		return host
+	}
+	// RemoteAddr可能不带端口，兜底直接解析
+	if net.ParseIP(strings.TrimSpace(r.RemoteAddr)) != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return ""
 }
 
 // processIncomingMessage 处理接收到的消息：解密 → 解压 → 解析JSON
