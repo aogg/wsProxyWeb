@@ -97,7 +97,7 @@
     {
       "id": "stage3",
       "name": "第三阶段：请求拦截和转发",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "3.1",
@@ -288,7 +288,7 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 4,
+    "completedStages": 5,
     "completedSteps": 13,
     "completionRate": 62
   }
