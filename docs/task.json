@@ -126,9 +126,10 @@
           "name": "实现浏览器插件响应处理",
           "task": "接收服务端响应，还原为原始请求的响应",
           "acceptanceCriteria": "网页请求可以通过代理正常返回响应",
-          "completed": false,
+          "completed": true,
           "files": [
-            "client/src/background/background.ts"
+            "client/src/background/background.ts",
+            "client/public/manifest.json"
           ]
         }
       ]
