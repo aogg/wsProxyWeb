@@ -11,10 +11,19 @@ import (
 )
 
 func main() {
-	// 创建WebSocket服务器，默认端口8080
-	port := "8080"
+	// 加载配置文件
+	config, err := libs.LoadConfig("")
+	if err != nil {
+		log.Fatalf("加载配置文件失败: %v", err)
+	}
+
+	// 从配置文件读取端口，如果命令行参数有指定则优先使用命令行参数
+	port := config.Server.Port
 	if len(os.Args) > 1 {
 		port = os.Args[1]
+		log.Printf("使用命令行参数指定的端口: %s", port)
+	} else {
+		log.Printf("使用配置文件中的端口: %s", port)
 	}
 
 	server := libs.NewWebSocketServer(port)

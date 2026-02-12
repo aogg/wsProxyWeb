@@ -179,10 +179,11 @@
           "name": "实现Go服务端配置管理",
           "task": "创建配置文件，实现配置读取",
           "acceptanceCriteria": "服务端可以从配置文件读取配置",
-          "completed": false,
+          "completed": true,
           "files": [
             "server/src/configs/server.yaml",
-            "server/src/libs/config_lib.go"
+            "server/src/libs/config_lib.go",
+            "server/main.go"
           ]
         },
         {
@@ -287,7 +288,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 3,
-    "completedSteps": 10,
-    "completionRate": 48
+    "completedSteps": 11,
+    "completionRate": 52
   }
 }
