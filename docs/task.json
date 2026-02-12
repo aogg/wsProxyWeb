@@ -265,10 +265,15 @@
           "name": "编写单元测试",
           "task": "为关键模块编写测试",
           "acceptanceCriteria": "关键功能有测试覆盖",
-          "completed": false,
+          "completed": true,
           "files": [
-            "server/src/tests/",
-            "client/src/tests/"
+            "server/src/tests/crypto_lib_test.go",
+            "server/src/tests/compress_lib_test.go",
+            "server/src/tests/http_lib_test.go",
+            "client/src/tests/crypto.test.ts",
+            "client/src/tests/compress.test.ts",
+            "client/src/tests/setup.ts",
+            "client/jest.config.js"
           ]
         },
         {
@@ -297,7 +302,7 @@
     "totalStages": 7,
     "totalSteps": 21,
     "completedStages": 6,
-    "completedSteps": 18,
-    "completionRate": 86
+    "completedSteps": 19,
+    "completionRate": 90
   }
 }
