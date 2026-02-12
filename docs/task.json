@@ -137,7 +137,7 @@
     {
       "id": "stage4",
       "name": "第四阶段：数据加密和压缩",
-      "completed": false,
+      "completed": true,
       "steps": [
         {
           "id": "4.1",
@@ -158,10 +158,13 @@
           "name": "实现浏览器插件加密压缩",
           "task": "在插件中实现数据加密和压缩",
           "acceptanceCriteria": "插件可以正确加密压缩数据，与服务端通信正常",
-          "completed": false,
+          "completed": true,
           "files": [
             "client/src/libs/crypto.ts",
-            "client/src/libs/compress.ts"
+            "client/src/libs/compress.ts",
+            "client/src/libs/websocket.ts",
+            "client/src/background/background.ts",
+            "client/src/configs/client.json"
           ]
         }
       ]
@@ -283,8 +286,8 @@
   "statistics": {
     "totalStages": 7,
     "totalSteps": 21,
-    "completedStages": 2,
-    "completedSteps": 9,
-    "completionRate": 43
+    "completedStages": 3,
+    "completedSteps": 10,
+    "completionRate": 48
   }
 }

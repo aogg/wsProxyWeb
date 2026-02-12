@@ -1,5 +1,8 @@
 // WebSocket工具库
 
+import { CryptoUtil, CryptoConfig } from './crypto';
+import { CompressUtil, CompressConfig } from './compress';
+
 // 连接状态枚举
 export enum ConnectionStatus {
   Disconnected = 'disconnected',
@@ -37,9 +40,33 @@ export class WebSocketClient {
   private statusChangeCallbacks: StatusChangeCallback[] = [];
   private messageCallbacks: MessageCallback[] = [];
   private shouldReconnect: boolean = true;
+  private cryptoUtil: CryptoUtil | null = null;
+  private compressUtil: CompressUtil | null = null;
 
-  constructor(url: string) {
+  constructor(url: string, cryptoConfig?: CryptoConfig, compressConfig?: CompressConfig) {
     this.url = url;
+    
+    // 初始化加密工具
+    if (cryptoConfig) {
+      try {
+        this.cryptoUtil = new CryptoUtil(cryptoConfig);
+        console.log(`加密功能: ${cryptoConfig.enabled ? '已启用' : '已禁用'} (算法: ${cryptoConfig.algorithm})`);
+      } catch (error) {
+        console.error('初始化加密工具失败:', error);
+        this.cryptoUtil = null;
+      }
+    }
+    
+    // 初始化压缩工具
+    if (compressConfig) {
+      try {
+        this.compressUtil = new CompressUtil(compressConfig);
+        console.log(`压缩功能: ${compressConfig.enabled ? '已启用' : '已禁用'} (算法: ${compressConfig.algorithm}, 级别: ${compressConfig.level})`);
+      } catch (error) {
+        console.error('初始化压缩工具失败:', error);
+        this.compressUtil = null;
+      }
+    }
   }
 
   /**
@@ -66,19 +93,35 @@ export class WebSocketClient {
         this.startHeartbeat();
       };
 
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = async (event) => {
         try {
-          const message: Message = JSON.parse(event.data);
+          // 处理接收到的消息：解密 → 解压 → 解析JSON
+          let messageData: Message;
+          
+          if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+            // 二进制数据，需要解密和解压
+            const arrayBuffer = event.data instanceof Blob 
+              ? await event.data.arrayBuffer() 
+              : event.data;
+            const uint8Array = new Uint8Array(arrayBuffer);
+            
+            // 解密 → 解压 → 解析JSON
+            const decryptedData = await this.processIncomingMessage(uint8Array);
+            messageData = JSON.parse(new TextDecoder().decode(decryptedData));
+          } else {
+            // 文本数据，直接解析JSON（兼容未启用加密压缩的情况）
+            messageData = JSON.parse(event.data);
+          }
           
           // 处理心跳响应
-          if (message.type === 'pong' || message.type === 'heartbeat') {
+          if (messageData.type === 'pong' || messageData.type === 'heartbeat') {
             return;
           }
 
           // 触发消息回调
           this.messageCallbacks.forEach(callback => {
             try {
-              callback(message);
+              callback(messageData);
             } catch (error) {
               console.error('消息回调执行错误:', error);
             }
@@ -134,20 +177,90 @@ export class WebSocketClient {
   /**
    * 发送消息
    */
-  public send(message: Message): boolean {
+  public async send(message: Message): Promise<boolean> {
     if (this.status !== ConnectionStatus.Connected || !this.ws) {
       console.warn('WebSocket未连接，无法发送消息');
       return false;
     }
 
     try {
-      const json = JSON.stringify(message);
-      this.ws.send(json);
+      // 序列化JSON → 压缩 → 加密 → 发送二进制数据
+      const jsonString = JSON.stringify(message);
+      const jsonBytes = new TextEncoder().encode(jsonString);
+      
+      // 处理发送消息：压缩 → 加密 → 发送
+      const processedData = await this.processOutgoingMessage(jsonBytes);
+      
+      // 发送二进制数据
+      this.ws.send(processedData);
       return true;
     } catch (error) {
       console.error('发送消息失败:', error);
       return false;
     }
+  }
+
+  /**
+   * 处理发送消息：压缩 → 加密
+   */
+  private async processOutgoingMessage(data: Uint8Array): Promise<Uint8Array | string> {
+    let processedData: Uint8Array = data;
+    
+    // 步骤1: 压缩
+    if (this.compressUtil && this.compressUtil.isEnabled()) {
+      try {
+        processedData = await this.compressUtil.compress(processedData);
+      } catch (error) {
+        console.error('压缩失败:', error);
+        throw error;
+      }
+    }
+    
+    // 步骤2: 加密
+    if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
+      try {
+        processedData = await this.cryptoUtil.encrypt(processedData);
+      } catch (error) {
+        console.error('加密失败:', error);
+        throw error;
+      }
+    }
+    
+    // 如果未启用加密和压缩，返回原始文本数据（兼容性）
+    if (!this.cryptoUtil?.isEnabled() && !this.compressUtil?.isEnabled()) {
+      return new TextDecoder().decode(data);
+    }
+    
+    return processedData;
+  }
+
+  /**
+   * 处理接收消息：解密 → 解压
+   */
+  private async processIncomingMessage(data: Uint8Array): Promise<Uint8Array> {
+    let processedData: Uint8Array = data;
+    
+    // 步骤1: 解密
+    if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
+      try {
+        processedData = await this.cryptoUtil.decrypt(processedData);
+      } catch (error) {
+        console.error('解密失败:', error);
+        throw error;
+      }
+    }
+    
+    // 步骤2: 解压
+    if (this.compressUtil && this.compressUtil.isEnabled()) {
+      try {
+        processedData = await this.compressUtil.decompress(processedData);
+      } catch (error) {
+        console.error('解压失败:', error);
+        throw error;
+      }
+    }
+    
+    return processedData;
   }
 
   /**
@@ -216,14 +329,14 @@ export class WebSocketClient {
   private startHeartbeat(): void {
     this.stopHeartbeat();
     
-    this.heartbeatTimer = setInterval(() => {
+    this.heartbeatTimer = setInterval(async () => {
       if (this.status === ConnectionStatus.Connected && this.ws) {
         const heartbeatMessage: Message = {
           id: `heartbeat_${Date.now()}`,
           type: 'ping',
           data: { timestamp: Date.now() }
         };
-        this.send(heartbeatMessage);
+        await this.send(heartbeatMessage);
       }
     }, this.heartbeatInterval);
   }

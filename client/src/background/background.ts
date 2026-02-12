@@ -1,6 +1,8 @@
 // 浏览器插件后台脚本
 
 import { WebSocketClient, ConnectionStatus, Message } from '../libs/websocket';
+import { CryptoConfig } from '../libs/crypto';
+import { CompressConfig } from '../libs/compress';
 import clientConfig from '../configs/client.json';
 
 // WebSocket客户端实例
@@ -36,8 +38,21 @@ function initWebSocket(): void {
   
   console.log('初始化WebSocket连接:', wsUrl);
   
-  // 创建WebSocket客户端
-  wsClient = new WebSocketClient(wsUrl);
+  // 读取加密和压缩配置
+  const cryptoConfig: CryptoConfig = (clientConfig as any).crypto || {
+    enabled: false,
+    key: '',
+    algorithm: 'aes256gcm'
+  };
+  
+  const compressConfig: CompressConfig = (clientConfig as any).compress || {
+    enabled: false,
+    level: 6,
+    algorithm: 'gzip'
+  };
+  
+  // 创建WebSocket客户端（传入加密和压缩配置）
+  wsClient = new WebSocketClient(wsUrl, cryptoConfig, compressConfig);
 
   // 监听连接状态变化
   wsClient.onStatusChange((status: ConnectionStatus) => {
@@ -241,12 +256,12 @@ function initRequestInterceptor(): void {
 /**
  * 将请求信息发送到服务端
  */
-function sendRequestToServer(
+async function sendRequestToServer(
   requestId: string,
   details: chrome.webRequest.WebRequestDetails,
   requestBody: string,
   bodyEncoding: 'text' | 'base64'
-): void {
+): Promise<void> {
   // 检查WebSocket连接状态
   if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
     console.warn('WebSocket未连接，无法发送请求:', details.url);
@@ -281,13 +296,23 @@ function sendRequestToServer(
     }
   };
 
-  // 发送消息
-  const success = wsClient.send(message);
-  if (success) {
-    console.log('请求已发送到服务端:', requestId, details.url);
-    // 注意：不在这里删除pendingRequest，等待响应返回后再删除
-  } else {
-    console.error('发送请求失败:', requestId, details.url);
+  // 发送消息（现在是异步的）
+  try {
+    const success = await wsClient.send(message);
+    if (success) {
+      console.log('请求已发送到服务端:', requestId, details.url);
+      // 注意：不在这里删除pendingRequest，等待响应返回后再删除
+    } else {
+      console.error('发送请求失败:', requestId, details.url);
+      // 清理待处理请求
+      const pendingRequest = pendingRequestsById.get(requestId);
+      if (pendingRequest) {
+        pendingRequests.delete(pendingRequest.chromeRequestId);
+        pendingRequestsById.delete(requestId);
+      }
+    }
+  } catch (error) {
+    console.error('发送请求异常:', error);
     // 清理待处理请求
     const pendingRequest = pendingRequestsById.get(requestId);
     if (pendingRequest) {

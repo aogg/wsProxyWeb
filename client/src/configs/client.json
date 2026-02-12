@@ -1,5 +1,13 @@
 {
-  "websocketUrl": "ws://localhost:8080",
-  "encryptionEnabled": true,
-  "compressionEnabled": true
+  "websocketUrl": "ws://localhost:8080/ws",
+  "crypto": {
+    "enabled": false,
+    "key": "",
+    "algorithm": "aes256gcm"
+  },
+  "compress": {
+    "enabled": false,
+    "level": 6,
+    "algorithm": "gzip"
+  }
 }
