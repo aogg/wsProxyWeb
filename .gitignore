@@ -1,4 +1,6 @@
 .history
+# mklink /J .codebuddy .cursor 
+.codebuddy
 
 # Go编译产物
 *.exe
