@@ -16,6 +16,8 @@ let whitelistTextarea: HTMLTextAreaElement;
 let blacklistTextarea: HTMLTextAreaElement;
 let urlPatternsTextarea: HTMLTextAreaElement;
 let saveConfigBtn: HTMLButtonElement;
+let startBtn: HTMLButtonElement;
+let stopBtn: HTMLButtonElement;
 let reconnectBtn: HTMLButtonElement;
 let resetBtn: HTMLButtonElement;
 let statusDot: HTMLElement;
@@ -38,6 +40,8 @@ async function init(): Promise<void> {
   blacklistTextarea = document.getElementById('blacklist') as HTMLTextAreaElement;
   urlPatternsTextarea = document.getElementById('urlPatterns') as HTMLTextAreaElement;
   saveConfigBtn = document.getElementById('saveConfigBtn') as HTMLButtonElement;
+  startBtn = document.getElementById('startBtn') as HTMLButtonElement;
+  stopBtn = document.getElementById('stopBtn') as HTMLButtonElement;
   reconnectBtn = document.getElementById('reconnectBtn') as HTMLButtonElement;
   resetBtn = document.getElementById('resetBtn') as HTMLButtonElement;
   statusDot = document.getElementById('statusDot') as HTMLElement;
@@ -66,6 +70,9 @@ async function loadConfig(): Promise<void> {
     // 填充表单
     websocketUrlInput.value = config.websocketUrl || 'ws://localhost:8080/ws';
     
+    // 更新启动/停止按钮状态
+    updateProxyButtonState(config.proxyEnabled || false);
+    
     if (config.crypto) {
       cryptoEnabledCheckbox.checked = config.crypto.enabled || false;
       cryptoKeyInput.value = config.crypto.key || '';
@@ -83,6 +90,17 @@ async function loadConfig(): Promise<void> {
   } catch (error) {
     console.error('加载配置失败:', error);
     showMessage('加载配置失败', 'error');
+  }
+}
+
+// 更新启动/停止按钮显示状态
+function updateProxyButtonState(enabled: boolean): void {
+  if (enabled) {
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'block';
+  } else {
+    startBtn.style.display = 'block';
+    stopBtn.style.display = 'none';
   }
 }
 
@@ -146,6 +164,16 @@ function bindEvents(): void {
   // 保存配置
   saveConfigBtn.addEventListener('click', async () => {
     await saveConfig();
+  });
+
+  // 启动代理
+  startBtn.addEventListener('click', async () => {
+    await startProxy();
+  });
+
+  // 停止代理
+  stopBtn.addEventListener('click', async () => {
+    await stopProxy();
   });
 
   // 重新连接
@@ -263,12 +291,61 @@ async function reconnect(): Promise<void> {
   }
 }
 
+// 启动代理
+async function startProxy(): Promise<void> {
+  try {
+    showMessage('正在启动代理...', 'info');
+    
+    // 通知background启动代理
+    const response = await chrome.runtime.sendMessage({ type: 'startProxy' });
+    
+    if (response && response.success) {
+      // 保存启用状态
+      const config = await StorageUtil.getConfig();
+      await StorageUtil.saveConfig({ ...config, proxyEnabled: true });
+      
+      updateProxyButtonState(true);
+      showMessage('代理已启动', 'success');
+    } else {
+      showMessage(response?.error || '启动代理失败', 'error');
+    }
+  } catch (error) {
+    console.error('启动代理失败:', error);
+    showMessage('启动代理失败', 'error');
+  }
+}
+
+// 停止代理
+async function stopProxy(): Promise<void> {
+  try {
+    showMessage('正在停止代理...', 'info');
+    
+    // 通知background停止代理
+    const response = await chrome.runtime.sendMessage({ type: 'stopProxy' });
+    
+    if (response && response.success) {
+      // 保存禁用状态
+      const config = await StorageUtil.getConfig();
+      await StorageUtil.saveConfig({ ...config, proxyEnabled: false });
+      
+      updateProxyButtonState(false);
+      showMessage('代理已停止', 'success');
+    } else {
+      showMessage(response?.error || '停止代理失败', 'error');
+    }
+  } catch (error) {
+    console.error('停止代理失败:', error);
+    showMessage('停止代理失败', 'error');
+  }
+}
+
 // 重置配置
 async function resetConfig(): Promise<void> {
   try {
     // 重置为默认值
     const defaultConfig: ClientConfig = {
       websocketUrl: 'ws://localhost:8080/ws',
+      proxyEnabled: false,
       crypto: {
         enabled: false,
         key: '',
@@ -290,6 +367,9 @@ async function resetConfig(): Promise<void> {
 
     await StorageUtil.saveConfig(defaultConfig);
     await StorageUtil.saveRules(defaultRules);
+
+    // 更新按钮状态
+    updateProxyButtonState(false);
 
     // 重新加载配置
     await loadConfig();

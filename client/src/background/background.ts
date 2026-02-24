@@ -12,6 +12,9 @@ const INIT_KEY = 'ws_proxy_initialized';
 // WebSocket客户端实例
 let wsClient: WebSocketClient | null = null;
 
+// 代理是否启用
+let proxyEnabled: boolean = false;
+
 // 请求拦截器是否已初始化
 let interceptorInitialized = false;
 
@@ -241,31 +244,25 @@ function initKeepAlive(): void {
 
 // 统一初始化入口
 async function initialize(): Promise<void> {
-  // 优先检查全局变量（连接可能还活跃）
-  if (isConnectionActive()) {
-    console.log('WebSocket连接仍然活跃，跳过初始化');
-    return;
-  }
-
-  // 检查会话是否已初始化
-  const sessionInit = await checkSessionInit();
-  if (sessionInit) {
-    console.log('当前会话已初始化，检查连接状态...');
-    // 会话已初始化但连接不活跃，尝试重连
-    if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
-      console.log('连接已断开，重新初始化...');
-    } else {
-      return;
-    }
-  }
-
   console.log('开始初始化WebSocket代理插件...');
+
+  // 读取代理启用状态
+  try {
+    const config = await StorageUtil.getConfig();
+    proxyEnabled = config.proxyEnabled ?? false;
+    console.log('代理启用状态:', proxyEnabled);
+  } catch (error) {
+    console.warn('读取代理启用状态失败，默认禁用:', error);
+    proxyEnabled = false;
+  }
 
   // 标记会话已初始化
   await markSessionInit();
 
-  // 执行初始化
-  await initWebSocket();
+  // 只有在代理启用时才初始化WebSocket连接
+  if (proxyEnabled) {
+    await initWebSocket();
+  }
 
   // 初始化规则
   await initRules();
@@ -308,10 +305,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === 'getStatus') {
     const status = wsClient ? wsClient.getStatus() : ConnectionStatus.Disconnected;
     sendResponse({ status });
+  } else if (message.type === 'startProxy') {
+    console.log('收到启动代理请求');
+    startProxy().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('启动代理失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // 保持消息通道开放以支持异步响应
+  } else if (message.type === 'stopProxy') {
+    console.log('收到停止代理请求');
+    stopProxy().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('停止代理失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // 保持消息通道开放以支持异步响应
   }
   
   return true; // 保持消息通道开放以支持异步响应
 });
+
+// 启动代理
+async function startProxy(): Promise<void> {
+  console.log('启动代理...');
+  proxyEnabled = true;
+  await initWebSocket();
+  console.log('代理已启动');
+}
+
+// 停止代理
+async function stopProxy(): Promise<void> {
+  console.log('停止代理...');
+  proxyEnabled = false;
+  if (wsClient) {
+    wsClient.disconnect();
+    wsClient = null;
+    globalThis.__WS_CLIENT__ = null;
+    globalThis.__WS_INITIALIZED__ = false;
+    updateConnectionStatus(ConnectionStatus.Disconnected);
+  }
+  console.log('代理已停止');
+}
 
 /**
  * 初始化请求拦截
@@ -333,6 +370,11 @@ function initRequestInterceptor(): void {
       if (details.url.startsWith('chrome-extension://') || 
           details.url.startsWith('chrome://') ||
           details.url.startsWith('edge://')) {
+        return;
+      }
+
+      // 检查代理是否启用
+      if (!proxyEnabled) {
         return;
       }
 

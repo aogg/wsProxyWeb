@@ -3,6 +3,7 @@
 // 客户端配置接口
 export interface ClientConfig {
   websocketUrl: string;
+  proxyEnabled?: boolean; // 代理是否启用
   crypto?: {
     enabled: boolean;
     key: string;
@@ -104,6 +105,7 @@ export class StorageUtil {
       // 默认配置
       return {
         websocketUrl: 'ws://localhost:8080/ws',
+        proxyEnabled: false,
         crypto: {
           enabled: false,
           key: '',

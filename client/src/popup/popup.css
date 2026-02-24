@@ -190,15 +190,35 @@ body {
   background: #c82333;
 }
 
+.btn-success {
+  background: #28a745;
+  color: #fff;
+}
+
+.btn-success:hover {
+  background: #218838;
+}
+
+.btn-warning {
+  background: #ffc107;
+  color: #212529;
+}
+
+.btn-warning:hover {
+  background: #e0a800;
+}
+
 /* 操作区域 */
 .action-section {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 20px;
 }
 
 .action-section .btn {
   flex: 1;
+  min-width: calc(50% - 4px);
 }
 
 /* 底部 */
