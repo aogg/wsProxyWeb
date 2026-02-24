@@ -6,8 +6,20 @@ import { CompressConfig } from '../libs/compress';
 import { StorageUtil, ClientConfig, RuleConfig } from '../libs/storage';
 import { RuleLib } from '../libs/rule_lib';
 
+// 初始化状态键名
+const INIT_KEY = 'ws_proxy_initialized';
+
 // WebSocket客户端实例
 let wsClient: WebSocketClient | null = null;
+
+// 请求拦截器是否已初始化
+let interceptorInitialized = false;
+
+// 全局标记（用于Service Worker重启时检测）
+declare global {
+  var __WS_INITIALIZED__: boolean;
+  var __WS_CLIENT__: WebSocketClient | null;
+}
 
 // 规则匹配实例（用于决定是否代理）
 let ruleLib: RuleLib | null = null;
@@ -36,8 +48,27 @@ interface PendingRequest {
 const pendingRequests = new Map<string, PendingRequest>(); // key是chrome的requestId
 const pendingRequestsById = new Map<string, PendingRequest>(); // key是我们生成的requestId，用于响应关联
 
+// 检查是否已初始化且连接活跃
+function isConnectionActive(): boolean {
+  // 检查全局变量（Service Worker未重启时可复用）
+  if (globalThis.__WS_CLIENT__ && globalThis.__WS_INITIALIZED__) {
+    const client = globalThis.__WS_CLIENT__;
+    if (client && client.getStatus() === ConnectionStatus.Connected) {
+      console.log('复用已存在的WebSocket连接');
+      wsClient = client;
+      return true;
+    }
+  }
+  return false;
+}
+
 // 初始化WebSocket连接
 async function initWebSocket(): Promise<void> {
+  // 检查连接是否已活跃
+  if (isConnectionActive()) {
+    return;
+  }
+
   try {
     // 优先从storage读取配置，如果没有则使用默认配置
     let config: ClientConfig;
@@ -78,16 +109,24 @@ async function initWebSocket(): Promise<void> {
     };
 
     // 如果已有连接，先断开
-    if (wsClient) {
+    if (wsClient && wsClient !== globalThis.__WS_CLIENT__) {
       wsClient.disconnect();
     }
 
     // 创建WebSocket客户端（传入加密和压缩配置）
     wsClient = new WebSocketClient(wsUrl, cryptoConfig, compressConfig);
 
+    // 保存到全局变量
+    globalThis.__WS_CLIENT__ = wsClient;
+
     // 监听连接状态变化
     wsClient.onStatusChange((status: ConnectionStatus) => {
       console.log('WebSocket连接状态:', status);
+
+      // 连接成功时标记已初始化
+      if (status === ConnectionStatus.Connected) {
+        globalThis.__WS_INITIALIZED__ = true;
+      }
 
       // 通过storage记录状态，供popup读取
       updateConnectionStatus(status);
@@ -148,27 +187,102 @@ StorageUtil.onRulesChange((rules: RuleConfig) => {
 });
 
 // 插件安装或启动时初始化
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('插件已安装，初始化WebSocket连接');
-  initWebSocket();
+chrome.runtime.onInstalled.addListener(async () => {
+  console.log('插件已安装');
+  // 清除会话标记，允许重新初始化
+  try {
+    await chrome.storage.session.remove(INIT_KEY);
+  } catch {}
+  globalThis.__WS_INITIALIZED__ = false;
+  await initialize();
 });
 
 // Service Worker启动时初始化（Manifest V3）
-chrome.runtime.onStartup.addListener(() => {
-  console.log('插件已启动，初始化WebSocket连接');
-  initWebSocket();
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('插件已启动');
+  await initialize();
 });
 
-// 如果Service Worker已经运行，直接初始化
+// 检查是否已在当前会话中初始化（使用 session storage）
+async function checkSessionInit(): Promise<boolean> {
+  try {
+    const result = await chrome.storage.session.get(INIT_KEY);
+    return !!result[INIT_KEY];
+  } catch {
+    // session storage 可能不被支持（Chrome < 102）
+    return false;
+  }
+}
+
+// 标记当前会话已初始化
+async function markSessionInit(): Promise<void> {
+  try {
+    await chrome.storage.session.set({ [INIT_KEY]: true });
+  } catch {
+    // 忽略不支持的情况
+  }
+}
+
+// 初始化保活机制
+function initKeepAlive(): void {
+  // 创建定期闹钟保持Service Worker活跃（每25秒，Chrome限制最小1分钟）
+  chrome.alarms.create('keepAlive', { periodInMinutes: 1 });
+
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'keepAlive') {
+      // 检查连接状态
+      if (wsClient) {
+        const status = wsClient.getStatus();
+        console.log('Service Worker保活检查, 连接状态:', status);
+      }
+    }
+  });
+}
+
+// 统一初始化入口
+async function initialize(): Promise<void> {
+  // 优先检查全局变量（连接可能还活跃）
+  if (isConnectionActive()) {
+    console.log('WebSocket连接仍然活跃，跳过初始化');
+    return;
+  }
+
+  // 检查会话是否已初始化
+  const sessionInit = await checkSessionInit();
+  if (sessionInit) {
+    console.log('当前会话已初始化，检查连接状态...');
+    // 会话已初始化但连接不活跃，尝试重连
+    if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
+      console.log('连接已断开，重新初始化...');
+    } else {
+      return;
+    }
+  }
+
+  console.log('开始初始化WebSocket代理插件...');
+
+  // 标记会话已初始化
+  await markSessionInit();
+
+  // 执行初始化
+  await initWebSocket();
+
+  // 初始化规则
+  await initRules();
+
+  // 初始化请求拦截（只注册一次）
+  initRequestInterceptor();
+
+  // 初始化保活机制
+  initKeepAlive();
+}
+
+// 如果Service Worker已经运行，执行初始化
 if (chrome.runtime.id) {
   console.log('WebSocket代理插件已加载');
-  initWebSocket();
-  // 初始化规则（优先从storage读取）
-  initRules().catch((error) => {
-    console.error('初始化规则失败:', error);
+  initialize().catch((error) => {
+    console.error('初始化失败:', error);
   });
-  // 初始化请求拦截
-  initRequestInterceptor();
 }
 
 // 监听来自popup的消息（用于手动重连等操作）
@@ -203,6 +317,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * 初始化请求拦截
  */
 function initRequestInterceptor(): void {
+  // 防止重复注册监听器
+  if (interceptorInitialized) {
+    console.log('请求拦截器已初始化，跳过');
+    return;
+  }
+  interceptorInitialized = true;
+
   console.log('初始化请求拦截器');
 
   // 拦截所有HTTP/HTTPS请求（获取请求体）

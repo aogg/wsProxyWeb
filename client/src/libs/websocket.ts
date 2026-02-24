@@ -164,7 +164,14 @@ export class WebSocketClient {
       };
 
       this.ws.onclose = (event) => {
-        console.log('WebSocket连接关闭:', event.code, event.reason);
+        // 详细记录关闭原因
+        const closeReason = this.getCloseReasonDescription(event.code);
+        console.error('WebSocket连接关闭:', {
+          code: event.code,
+          reason: event.reason || closeReason,
+          wasClean: event.wasClean,
+          description: closeReason
+        });
         this.stopHeartbeat();
         this.setStatus(ConnectionStatus.Disconnected);
 
@@ -269,8 +276,9 @@ export class WebSocketClient {
 
   /**
    * 处理发送消息：压缩 → 加密
+   * 始终返回二进制数据，确保与服务器协议一致
    */
-  private async processOutgoingMessage(data: Uint8Array): Promise<Uint8Array | string> {
+  private async processOutgoingMessage(data: Uint8Array): Promise<Uint8Array> {
     let processedData: Uint8Array = data;
     
     // 步骤1: 压缩
@@ -293,11 +301,8 @@ export class WebSocketClient {
       }
     }
     
-    // 如果未启用加密和压缩，返回原始文本数据（兼容性）
-    if (!this.cryptoUtil?.isEnabled() && !this.compressUtil?.isEnabled()) {
-      return new TextDecoder().decode(data);
-    }
-    
+    // 始终返回二进制数据，确保与服务器协议一致
+    // 服务器期望接收二进制格式的 WebSocket 消息
     return processedData;
   }
 
@@ -328,6 +333,29 @@ export class WebSocketClient {
     }
     
     return processedData;
+  }
+
+  /**
+   * 获取 WebSocket 关闭码的描述
+   */
+  private getCloseReasonDescription(code: number): string {
+    const reasons: Record<number, string> = {
+      1000: '正常关闭',
+      1001: '端点离开（服务器关闭或浏览器离开页面）',
+      1002: '协议错误',
+      1003: '不支持的数据类型',
+      1005: '未收到关闭帧',
+      1006: '连接异常关闭（无关闭帧）',
+      1007: '数据类型不一致',
+      1008: '违反策略',
+      1009: '消息过大',
+      1010: '缺少扩展',
+      1011: '内部错误',
+      1012: '服务重启',
+      1013: '稍后重试',
+      1015: 'TLS握手失败'
+    };
+    return reasons[code] || `未知关闭码: ${code}`;
   }
 
   /**

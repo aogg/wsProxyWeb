@@ -191,10 +191,23 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 
 	for {
 		// 读取原始消息（二进制数据）
-		_, rawData, err := conn.Read(ctx)
+		msgType, rawData, err := conn.Read(ctx)
 		if err != nil {
-			Error("读取消息失败: %v", err)
+			// 详细记录读取失败原因
+			closeStatus := websocket.CloseStatus(err)
+			if closeStatus == -1 {
+				// 非WebSocket关闭错误，可能是网络问题
+				Error("读取消息失败: ip=%s, 错误类型=网络错误, 详情: %v", clientIP, err)
+			} else {
+				// WebSocket关闭帧
+				Error("读取消息失败: ip=%s, 关闭码=%d, 详情: %v", clientIP, closeStatus, err)
+			}
 			return
+		}
+
+		// 记录接收到的消息类型
+		if msgType == websocket.MessageText {
+			Warn("收到文本消息（服务端期望二进制消息）: ip=%s, 数据长度=%d", clientIP, len(rawData))
 		}
 
 		// 安全控制：消息大小限制（解密前）
