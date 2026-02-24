@@ -1,0 +1,37 @@
+
+
+
+
+# 启动和构建
+- 必须使用/bin目录下的脚步，不允许执行npm
+## 脚本列表
+
+| 脚本 | Windows | Unix/Linux | 功能说明 |
+|------|---------|------------|----------|
+| 构建所有 | `build.bat` | `build.sh` | 构建客户端和服务端 |
+| 构建客户端 | `build-client.bat` | `build-client.sh` | 只构建客户端 |
+| 构建服务端 | `build-server.bat` | `build-server.sh` | 只构建服务端 |
+| 启动服务端 | `start-server.bat` | `start-server.sh` | 启动服务端（自动构建） |
+| 客户端开发 | `dev-client.bat` | `dev-client.sh` | 客户端开发模式（watch） |
+| 服务端开发 | `dev-server.bat` | `dev-server.sh` | 服务端开发模式（go run） |
+
+
+
+
+
+# server日志记录
+- 日志文件在/runtime/server/logs/YYYY-MM/DD.log
+- 每个日志头包含时间戳和日志级别，如：`[2025-06-01 12:00:00] [INFO]`
+- 要区分error和exception，error是错误，exception是异常
+
+## 日志级别：
+
+  - DEBUG：调试信息，用于开发调试
+
+  - INFO：普通信息，用于记录程序运行过程
+
+  - WARN：警告信息，用于记录可能出现的问题
+
+  - ERROR：错误信息，用于记录程序运行过程中出现的错误
+
+  - FATAL：致命错误，用于记录程序运行过程中出现的致命错误
