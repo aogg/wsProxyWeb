@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -38,26 +37,26 @@ func NewWebSocketServer(port string) *WebSocketServer {
 	// 加载配置
 	config, err := LoadConfig("")
 	if err != nil {
-		log.Printf("警告: 加载配置失败: %v，使用默认配置", err)
+		Warn("加载配置失败: %v，使用默认配置", err)
 		config = GetConfig()
 	}
 
 	// 初始化加密库
 	cryptoLib, err := NewCryptoLib(&config.Crypto)
 	if err != nil {
-		log.Printf("警告: 初始化加密库失败: %v，加密功能将被禁用", err)
+		Warn("初始化加密库失败: %v，加密功能将被禁用", err)
 		cryptoLib, _ = NewCryptoLib(&CryptoConfig{Enabled: false})
 	}
 
 	// 初始化压缩库
 	compressLib, err := NewCompressLib(&config.Compress)
 	if err != nil {
-		log.Printf("警告: 初始化压缩库失败: %v，压缩功能将被禁用", err)
+		Warn("初始化压缩库失败: %v，压缩功能将被禁用", err)
 		compressLib, _ = NewCompressLib(&CompressConfig{Enabled: false})
 	}
 
-	log.Printf("加密功能: %v (算法: %s)", cryptoLib.IsEnabled(), config.Crypto.Algorithm)
-	log.Printf("压缩功能: %v (算法: %s, 级别: %d)", compressLib.IsEnabled(), config.Compress.Algorithm, config.Compress.Level)
+	Info("加密功能: %v (算法: %s)", cryptoLib.IsEnabled(), config.Crypto.Algorithm)
+	Info("压缩功能: %v (算法: %s, 级别: %d)", compressLib.IsEnabled(), config.Compress.Algorithm, config.Compress.Level)
 
 	// 初始化安全控制逻辑（默认启用，但规则为空时基本不影响）
 	securityLogic := logic.NewSecurityLogic(logic.SecurityLogicConfig{
@@ -72,7 +71,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 		AllowDomains:        config.Security.AllowDomains,
 		DenyDomains:         config.Security.DenyDomains,
 	})
-	log.Printf("安全控制: %v (最大连接:%d, 最大消息:%dB, 最大请求体:%dB, 限流:%g/s, burst:%d)",
+	Info("安全控制: %v (最大连接:%d, 最大消息:%dB, 最大请求体:%dB, 限流:%g/s, burst:%d)",
 		securityLogic.IsEnabled(),
 		config.Security.MaxConnections,
 		config.Security.MaxMessageBytes,
@@ -83,7 +82,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 
 	// 初始化性能优化库
 	performanceLib := NewPerformanceLib(&config.Performance)
-	log.Printf("性能优化: workerPool=%d, chunkSize=%d, metrics=%v",
+	Info("性能优化: workerPool=%d, chunkSize=%d, metrics=%v",
 		config.Performance.WorkerPoolSize, config.Performance.ChunkSize, config.Performance.EnableMetrics)
 
 	return &WebSocketServer{
@@ -103,8 +102,8 @@ func (s *WebSocketServer) Start() error {
 	http.HandleFunc("/ws", s.handleWebSocket)
 
 	addr := ":" + s.port
-	log.Printf("WebSocket服务器启动，监听端口: %s", addr)
-	log.Printf("WebSocket连接地址: ws://localhost%s/ws", addr)
+	Info("WebSocket服务器启动，监听端口: %s", addr)
+	Info("WebSocket连接地址: ws://localhost%s/ws", addr)
 
 	return http.ListenAndServe(addr, nil)
 }
@@ -135,7 +134,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		OriginPatterns: []string{"*"}, // 允许所有来源，生产环境应该限制
 	})
 	if err != nil {
-		log.Printf("WebSocket连接失败: %v", err)
+		Error("WebSocket连接失败: %v", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "连接关闭")
@@ -143,7 +142,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	clientIP := getClientIP(r)
 	// 安全控制：连接数限制、IP白黑名单
 	if err := s.securityLogic.CheckNewConnection(clientIP, s.getClientCount()); err != nil {
-		log.Printf("拒绝连接: ip=%s, err=%v", clientIP, err)
+		Warn("拒绝连接: ip=%s, err=%v", clientIP, err)
 		conn.Close(websocket.StatusPolicyViolation, "连接被拒绝: "+err.Error())
 		return
 	}
@@ -158,7 +157,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 		defer s.performanceLib.DecConnection()
 	}
 
-	log.Printf("新客户端连接: ip=%s, 当前连接数: %d", clientIP, s.getClientCount())
+	Info("新客户端连接: ip=%s, 当前连接数: %d", clientIP, s.getClientCount())
 
 	// 处理消息
 	s.handleMessages(conn, clientIP)
@@ -176,7 +175,7 @@ func (s *WebSocketServer) removeClient(conn *websocket.Conn) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
 	delete(s.clients, conn)
-	log.Printf("客户端断开连接，当前连接数: %d", len(s.clients))
+	Info("客户端断开连接，当前连接数: %d", len(s.clients))
 }
 
 // getClientCount 获取客户端数量
@@ -194,13 +193,13 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 		// 读取原始消息（二进制数据）
 		_, rawData, err := conn.Read(ctx)
 		if err != nil {
-			log.Printf("读取消息失败: %v", err)
+			Error("读取消息失败: %v", err)
 			return
 		}
 
 		// 安全控制：消息大小限制（解密前）
 		if err := s.securityLogic.CheckRawMessageSize(len(rawData)); err != nil {
-			log.Printf("消息被拒绝: ip=%s, err=%v", clientIP, err)
+			Warn("消息被拒绝: ip=%s, err=%v", clientIP, err)
 			conn.Close(websocket.StatusPolicyViolation, "消息被拒绝: "+err.Error())
 			return
 		}
@@ -208,7 +207,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 		// 解密 → 解压 → 解析JSON
 		msg, err := s.processIncomingMessage(rawData)
 		if err != nil {
-			log.Printf("处理接收消息失败: %v", err)
+			Error("处理接收消息失败: %v", err)
 			// 发送错误响应
 			errorResponse := types.Message{
 				ID:   "",
@@ -219,12 +218,12 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 				},
 			}
 			if err := s.sendMessage(ctx, conn, errorResponse); err != nil {
-				log.Printf("发送错误响应失败: %v", err)
+				Error("发送错误响应失败: %v", err)
 			}
 			continue
 		}
 
-		log.Printf("收到消息: ID=%s, Type=%s", msg.ID, msg.Type)
+		Debug("收到消息: ID=%s, Type=%s", msg.ID, msg.Type)
 
 		// 处理不同类型的消息
 		var response types.Message
@@ -245,7 +244,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			
 			// 安全控制：请求校验（IP/域名/请求体大小/限流）
 			if err := s.securityLogic.CheckRequestMessage(clientIP, msg.Data); err != nil {
-				log.Printf("请求被拒绝: ip=%s, err=%v", clientIP, err)
+				Warn("请求被拒绝: ip=%s, err=%v", clientIP, err)
 				response.Type = "response"
 				response.Data = map[string]interface{}{
 					"status":       0,
@@ -268,7 +267,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 					"body":         "",
 					"bodyEncoding": "text",
 				}
-				log.Printf("处理请求失败: %v", err)
+				Error("处理请求失败: %v", err)
 			} else {
 				response = *responseMsg
 				response.ID = msg.ID // 确保ID一致
@@ -280,7 +279,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			}
 		case "close":
 			// 关闭消息
-			log.Printf("收到关闭消息: %v", msg.Data)
+			Info("收到关闭消息: %v", msg.Data)
 			return
 		default:
 			// 未知消息类型，返回错误
@@ -294,7 +293,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 
 		// 发送响应（压缩 → 加密 → 发送）
 		if err := s.sendMessage(ctx, conn, response); err != nil {
-			log.Printf("发送消息失败: %v", err)
+			Error("发送消息失败: %v", err)
 			return
 		}
 	}
@@ -395,7 +394,7 @@ func (s *WebSocketServer) Broadcast(msg types.Message) error {
 	ctx := context.Background()
 	for conn := range s.clients {
 		if err := s.sendMessage(ctx, conn, msg); err != nil {
-			log.Printf("广播消息失败: %v", err)
+			Error("广播消息失败: %v", err)
 		}
 	}
 	return nil

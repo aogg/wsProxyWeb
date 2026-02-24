@@ -3,7 +3,6 @@ package libs
 
 import (
 	"context"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -89,7 +88,7 @@ func NewPerformanceLib(config *PerformanceConfig) *PerformanceLib {
 	// 初始化worker池
 	if config.WorkerPoolSize > 0 {
 		pl.workerPool = NewWorkerPool(config.WorkerPoolSize, config.RequestQueueSize)
-		log.Printf("Worker池初始化完成: workers=%d, queueSize=%d", config.WorkerPoolSize, config.RequestQueueSize)
+		Info("Worker池初始化完成: workers=%d, queueSize=%d", config.WorkerPoolSize, config.RequestQueueSize)
 	}
 
 	// 启动指标收集
@@ -97,7 +96,7 @@ func NewPerformanceLib(config *PerformanceConfig) *PerformanceLib {
 		go pl.startMetricsCollection()
 	}
 
-	log.Printf("性能优化库初始化完成: chunkSize=%d, bufferPoolSize=%d, metrics=%v",
+	Info("性能优化库初始化完成: chunkSize=%d, bufferPoolSize=%d, metrics=%v",
 		config.ChunkSize, config.BufferPoolSize, config.EnableMetrics)
 
 	return pl
@@ -283,7 +282,7 @@ func (pl *PerformanceLib) startMetricsCollection() {
 		lastRequests = currentRequests
 
 		m := pl.GetMetrics()
-		log.Printf("[性能指标] 总请求:%d, 活跃请求:%d, RPS:%d, 平均响应:%dms, Buffer池命中/未命中:%d/%d",
+		Info("[性能指标] 总请求:%d, 活跃请求:%d, RPS:%d, 平均响应:%dms, Buffer池命中/未命中:%d/%d",
 			m.TotalRequests, m.ActiveRequests, m.RequestsPerSecond, m.AvgResponseTimeMs,
 			m.BufferPoolHits, m.BufferPoolMisses)
 	}

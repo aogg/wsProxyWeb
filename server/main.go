@@ -2,7 +2,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,16 +13,25 @@ func main() {
 	// 加载配置文件
 	config, err := libs.LoadConfig("")
 	if err != nil {
-		log.Fatalf("加载配置文件失败: %v", err)
+		// 配置加载失败，使用默认日志输出到控制台
+		libs.Error("加载配置文件失败: %v", err)
+		os.Exit(1)
 	}
+
+	// 初始化日志库
+	if err := libs.InitLog(&config.Log); err != nil {
+		libs.Error("初始化日志库失败: %v", err)
+		os.Exit(1)
+	}
+	defer libs.GetLogLib().Close()
 
 	// 从配置文件读取端口，如果命令行参数有指定则优先使用命令行参数
 	port := config.Server.Port
 	if len(os.Args) > 1 {
 		port = os.Args[1]
-		log.Printf("使用命令行参数指定的端口: %s", port)
+		libs.Info("使用命令行参数指定的端口: %s", port)
 	} else {
-		log.Printf("使用配置文件中的端口: %s", port)
+		libs.Info("使用配置文件中的端口: %s", port)
 	}
 
 	server := libs.NewWebSocketServer(port)
@@ -35,13 +43,13 @@ func main() {
 	// 在goroutine中启动服务器
 	go func() {
 		if err := server.Start(); err != nil {
-			log.Fatalf("服务器启动失败: %v", err)
+			libs.Fatal("服务器启动失败: %v", err)
 		}
 	}()
 
 	// 等待中断信号
 	<-sigChan
-	log.Println("收到关闭信号，正在关闭服务器...")
+	libs.Info("收到关闭信号，正在关闭服务器...")
 	server.Stop()
-	log.Println("服务器已关闭")
+	libs.Info("服务器已关闭")
 }

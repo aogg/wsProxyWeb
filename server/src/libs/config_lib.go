@@ -3,7 +3,6 @@ package libs
 
 import (
 	"fmt"
-	"log"
 	"path/filepath"
 
 	"github.com/spf13/viper"
@@ -12,6 +11,7 @@ import (
 // ServerConfig 服务端配置结构
 type ServerConfig struct {
 	Server      ServerConfigServer  `mapstructure:"server"`
+	Log         LogConfig           `mapstructure:"log"`
 	Crypto      CryptoConfig        `mapstructure:"crypto"`
 	Compress    CompressConfig      `mapstructure:"compress"`
 	Security    SecurityConfig      `mapstructure:"security"`
@@ -93,7 +93,7 @@ func LoadConfig(configPath string) (*ServerConfig, error) {
 
 	// 读取配置文件
 	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("警告: 读取配置文件失败: %v，使用默认配置", err)
+		Warn("读取配置文件失败: %v，使用默认配置", err)
 	}
 
 	// 解析配置到结构体
@@ -108,7 +108,7 @@ func LoadConfig(configPath string) (*ServerConfig, error) {
 	}
 
 	globalConfig = config
-	log.Printf("配置文件加载成功: %s", absPath)
+	Info("配置文件加载成功: %s", absPath)
 	return config, nil
 }
 
@@ -118,7 +118,7 @@ func GetConfig() *ServerConfig {
 		// 尝试加载默认配置
 		config, err := LoadConfig("")
 		if err != nil {
-			log.Printf("加载默认配置失败: %v，使用空配置", err)
+			Warn("加载默认配置失败: %v，使用空配置", err)
 			globalConfig = &ServerConfig{}
 		} else {
 			globalConfig = config
@@ -131,6 +131,15 @@ func GetConfig() *ServerConfig {
 func setDefaultConfig() {
 	// 服务器默认配置
 	viper.SetDefault("server.port", "8080")
+
+	// 日志默认配置
+	viper.SetDefault("log.enabled", true)
+	viper.SetDefault("log.level", "info")
+	viper.SetDefault("log.logDir", "runtime/server/logs")
+	viper.SetDefault("log.console", true)
+	viper.SetDefault("log.file", true)
+	viper.SetDefault("log.colorConsole", true)
+	viper.SetDefault("log.maxAgeDays", 30)
 
 	// 加密默认配置
 	viper.SetDefault("crypto.enabled", false)

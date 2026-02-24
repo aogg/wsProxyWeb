@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -119,7 +118,7 @@ func ExecuteHTTPRequestWithChunk(reqData types.HTTPRequestData, chunkSize int) (
 
 	// 记录请求耗时
 	elapsed := time.Since(startTime)
-	log.Printf("HTTP请求完成: %s %s, 状态码: %d, 响应大小: %d bytes, 耗时: %v",
+	Info("HTTP请求完成: %s %s, 状态码: %d, 响应大小: %d bytes, 耗时: %v",
 		reqData.Method, reqData.URL, resp.StatusCode, len(bodyBytes), elapsed)
 
 	// 判断响应体是否需要Base64编码
@@ -141,7 +140,7 @@ func ExecuteHTTPRequestWithChunk(reqData types.HTTPRequestData, chunkSize int) (
 	if chunkSize > 0 && len(bodyBytes) > largeResponseThreshold {
 		chunked = true
 		chunks = splitIntoChunks(bodyBytes, chunkSize, isBinary)
-		log.Printf("大响应体分块传输: 总大小=%d, 块数=%d, 块大小=%d", len(bodyBytes), len(chunks), chunkSize)
+		Debug("大响应体分块传输: 总大小=%d, 块数=%d, 块大小=%d", len(bodyBytes), len(chunks), chunkSize)
 	}
 
 	// 构建响应头映射
