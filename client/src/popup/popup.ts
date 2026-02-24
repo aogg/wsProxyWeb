@@ -18,6 +18,8 @@ let urlPatternsTextarea: HTMLTextAreaElement;
 let saveConfigBtn: HTMLButtonElement;
 let startBtn: HTMLButtonElement;
 let stopBtn: HTMLButtonElement;
+let connectBtn: HTMLButtonElement;
+let disconnectBtn: HTMLButtonElement;
 let reconnectBtn: HTMLButtonElement;
 let resetBtn: HTMLButtonElement;
 let statusDot: HTMLElement;
@@ -42,6 +44,8 @@ async function init(): Promise<void> {
   saveConfigBtn = document.getElementById('saveConfigBtn') as HTMLButtonElement;
   startBtn = document.getElementById('startBtn') as HTMLButtonElement;
   stopBtn = document.getElementById('stopBtn') as HTMLButtonElement;
+  connectBtn = document.getElementById('connectBtn') as HTMLButtonElement;
+  disconnectBtn = document.getElementById('disconnectBtn') as HTMLButtonElement;
   reconnectBtn = document.getElementById('reconnectBtn') as HTMLButtonElement;
   resetBtn = document.getElementById('resetBtn') as HTMLButtonElement;
   statusDot = document.getElementById('statusDot') as HTMLElement;
@@ -104,6 +108,17 @@ function updateProxyButtonState(enabled: boolean): void {
   }
 }
 
+// 更新连接按钮显示状态
+function updateConnectButtonState(connected: boolean): void {
+  if (connected) {
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = 'block';
+  } else {
+    connectBtn.style.display = 'block';
+    disconnectBtn.style.display = 'none';
+  }
+}
+
 // 加载规则配置
 async function loadRules(): Promise<void> {
   try {
@@ -150,6 +165,9 @@ function updateStatusDisplay(status: string, time: number): void {
   statusText.textContent = statusInfo.text;
   statusDot.style.backgroundColor = statusInfo.color;
 
+  // 更新连接按钮状态（已连接时显示停止连接按钮）
+  updateConnectButtonState(status === 'connected');
+
   // 更新连接时间
   if (time > 0) {
     const date = new Date(time);
@@ -174,6 +192,16 @@ function bindEvents(): void {
   // 停止代理
   stopBtn.addEventListener('click', async () => {
     await stopProxy();
+  });
+
+  // 启用连接
+  connectBtn.addEventListener('click', async () => {
+    await connect();
+  });
+
+  // 停止连接
+  disconnectBtn.addEventListener('click', async () => {
+    await disconnect();
   });
 
   // 重新连接
@@ -275,16 +303,62 @@ async function saveConfig(): Promise<void> {
   }
 }
 
+// 启用连接
+async function connect(): Promise<void> {
+  try {
+    showMessage('正在启用连接...', 'info');
+    
+    const response = await chrome.runtime.sendMessage({ type: 'connect' });
+    
+    if (response && response.success) {
+      connectBtn.style.display = 'none';
+      disconnectBtn.style.display = 'block';
+      showMessage('连接已启用', 'success');
+    } else {
+      showMessage(response?.error || '启用连接失败', 'error');
+    }
+  } catch (error) {
+    console.error('启用连接失败:', error);
+    showMessage('启用连接失败', 'error');
+  }
+}
+
+// 停止连接
+async function disconnect(): Promise<void> {
+  try {
+    showMessage('正在停止连接...', 'info');
+    
+    const response = await chrome.runtime.sendMessage({ type: 'disconnect' });
+    
+    if (response && response.success) {
+      connectBtn.style.display = 'block';
+      disconnectBtn.style.display = 'none';
+      showMessage('连接已停止', 'success');
+    } else {
+      showMessage(response?.error || '停止连接失败', 'error');
+    }
+  } catch (error) {
+    console.error('停止连接失败:', error);
+    showMessage('停止连接失败', 'error');
+  }
+}
+
 // 重新连接
 async function reconnect(): Promise<void> {
   try {
     showMessage('正在重新连接...', 'info');
     
-    // 通知background重新连接
-    chrome.runtime.sendMessage({ type: 'reconnect' }).catch(err => {
-      console.error('通知background失败:', err);
-      showMessage('重新连接失败', 'error');
-    });
+    // 先停止连接，再启用连接
+    await chrome.runtime.sendMessage({ type: 'disconnect' });
+    const response = await chrome.runtime.sendMessage({ type: 'connect' });
+    
+    if (response && response.success) {
+      connectBtn.style.display = 'none';
+      disconnectBtn.style.display = 'block';
+      showMessage('重新连接成功', 'success');
+    } else {
+      showMessage(response?.error || '重新连接失败', 'error');
+    }
   } catch (error) {
     console.error('重新连接失败:', error);
     showMessage('重新连接失败', 'error');

@@ -16,6 +16,17 @@
             </div>
         </header>
 
+        <!-- 操作按钮区域 -->
+        <section class="action-section">
+            <button id="startBtn" class="btn btn-success">启动代理</button>
+            <button id="stopBtn" class="btn btn-danger" style="display: none;">停止代理</button>
+            <button id="connectBtn" class="btn btn-primary">启用连接</button>
+            <button id="disconnectBtn" class="btn btn-secondary" style="display: none;">停止连接</button>
+            <button id="reconnectBtn" class="btn btn-secondary">重新连接</button>
+            <button id="saveConfigBtn" class="btn btn-primary">保存配置</button>
+            <button id="resetBtn" class="btn btn-danger">重置配置</button>
+        </section>
+
         <main class="main-content">
             <!-- 服务端连接配置 -->
             <section class="config-section">
@@ -29,7 +40,6 @@
                         class="input-field"
                     />
                 </div>
-                <button id="saveConfigBtn" class="btn btn-primary">保存配置</button>
             </section>
 
             <!-- 加密配置 -->
@@ -119,13 +129,6 @@
                 </div>
             </section>
 
-            <!-- 操作按钮 -->
-            <section class="action-section">
-                <button id="startBtn" class="btn btn-success">启动代理</button>
-                <button id="stopBtn" class="btn btn-danger" style="display: none;">停止代理</button>
-                <button id="reconnectBtn" class="btn btn-secondary">重新连接</button>
-                <button id="resetBtn" class="btn btn-danger">重置配置</button>
-            </section>
         </main>
 
         <footer class="footer">

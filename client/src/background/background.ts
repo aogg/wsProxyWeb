@@ -323,6 +323,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: error.message });
     });
     return true; // 保持消息通道开放以支持异步响应
+  } else if (message.type === 'connect') {
+    console.log('收到启用连接请求');
+    connectWebSocket().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('启用连接失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  } else if (message.type === 'disconnect') {
+    console.log('收到停止连接请求');
+    disconnectWebSocket().then(() => {
+      sendResponse({ success: true });
+    }).catch((error) => {
+      console.error('停止连接失败:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
   }
   
   return true; // 保持消息通道开放以支持异步响应
@@ -348,6 +366,26 @@ async function stopProxy(): Promise<void> {
     updateConnectionStatus(ConnectionStatus.Disconnected);
   }
   console.log('代理已停止');
+}
+
+// 启用WebSocket连接
+async function connectWebSocket(): Promise<void> {
+  console.log('启用WebSocket连接...');
+  await initWebSocket();
+  console.log('WebSocket连接已启用');
+}
+
+// 停止WebSocket连接
+async function disconnectWebSocket(): Promise<void> {
+  console.log('停止WebSocket连接...');
+  if (wsClient) {
+    wsClient.disconnect();
+    wsClient = null;
+    globalThis.__WS_CLIENT__ = null;
+    globalThis.__WS_INITIALIZED__ = false;
+    updateConnectionStatus(ConnectionStatus.Disconnected);
+  }
+  console.log('WebSocket连接已停止');
 }
 
 /**
