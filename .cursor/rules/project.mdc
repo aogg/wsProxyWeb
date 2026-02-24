@@ -21,7 +21,7 @@
 
 # server日志记录
 - 日志文件在/runtime/server/logs/YYYY-MM/DD.log
-- 每个日志头包含时间戳和日志级别，如：`[2025-06-01 12:00:00] [INFO]`
+- 每个日志头包含时间戳和日志级别，如：`[2025-06-01 12:00:00] [INFO] [业务模块]`
 - 要区分error和exception，error是错误，exception是异常
 
 ## 日志级别：
