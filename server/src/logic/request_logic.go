@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -59,17 +58,17 @@ func NewRequestLogic() *RequestLogic {
 }
 
 // ProcessRequest 处理HTTP请求
-// 接收WebSocket消息数据，解析请求，执行HTTP请求，返回响应消息
-func (rl *RequestLogic) ProcessRequest(msgData interface{}) (*types.Message, error) {
+// 接收WebSocket消息数据，解析请求，执行HTTP请求，返回响应消息和日志信息
+func (rl *RequestLogic) ProcessRequest(msgData interface{}) (*types.Message, *types.RequestLogInfo, error) {
 	// 解析请求数据
 	reqData, err := rl.parseRequestData(msgData)
 	if err != nil {
-		return nil, fmt.Errorf("解析请求数据失败: %v", err)
+		return nil, nil, fmt.Errorf("解析请求数据失败: %v", err)
 	}
 
 	// 验证请求数据
 	if err := rl.validateRequest(reqData); err != nil {
-		return nil, fmt.Errorf("请求验证失败: %v", err)
+		return nil, nil, fmt.Errorf("请求验证失败: %v", err)
 	}
 
 	// 转换为HTTP库需要的格式
@@ -82,18 +81,26 @@ func (rl *RequestLogic) ProcessRequest(msgData interface{}) (*types.Message, err
 	}
 
 	// 执行HTTP请求
-	log.Printf("执行HTTP请求: %s %s", reqData.Method, reqData.URL)
 	httpResp, err := executeHTTPRequest(httpReqData)
 	if err != nil {
 		// 返回错误响应
-		return rl.buildErrorResponse(err), fmt.Errorf("请求执行失败: %v", err)
+		return rl.buildErrorResponse(err), nil, fmt.Errorf("请求执行失败: %v", err)
 	}
 
 	// 构建成功响应
 	responseMsg := rl.buildSuccessResponse(httpResp, reqData)
-	log.Printf("HTTP请求完成: %s %s, 状态码: %d", reqData.Method, reqData.URL, httpResp.Status)
 
-	return responseMsg, nil
+	// 构建日志信息
+	logInfo := &types.RequestLogInfo{
+		URL:          reqData.URL,
+		Method:       reqData.Method,
+		ReqBody:      reqData.Body,
+		RespStatus:   httpResp.Status,
+		RespBody:     httpResp.Body,
+		RespBodySize: len(httpResp.Body),
+	}
+
+	return responseMsg, logInfo, nil
 }
 
 // parseRequestData 解析请求数据

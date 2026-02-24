@@ -7,7 +7,7 @@ server:
 # 日志配置
 log:
   enabled: true         # 是否启用日志
-  level: "info"         # 日志级别：debug, info, warn, error, fatal
+  level: "debug"         # 日志级别：debug, info, warn, error, fatal
   logDir: "runtime/server/logs"  # 日志目录
   console: true         # 是否输出到控制台
   file: true            # 是否输出到文件

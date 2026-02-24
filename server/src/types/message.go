@@ -51,3 +51,13 @@ type HTTPResponseData struct {
 	Chunks       []string          `json:"chunks,omitempty"`     // 分块数据
 	TotalSize    int               `json:"totalSize,omitempty"`  // 总大小
 }
+
+// RequestLogInfo 请求日志信息（用于记录请求详情）
+type RequestLogInfo struct {
+	URL          string // 请求URL
+	Method       string // 请求方法
+	ReqBody      string // 请求body
+	RespStatus   int    // 响应状态码
+	RespBody     string // 响应body
+	RespBodySize int    // 响应body大小(bytes)
+}

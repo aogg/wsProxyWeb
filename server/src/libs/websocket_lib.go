@@ -396,7 +396,32 @@ func getRequestLogic() *logic.RequestLogic {
 // handleHTTPRequest 处理HTTP请求
 func (s *WebSocketServer) handleHTTPRequest(msg *types.Message) (*types.Message, error) {
 	// 调用logic层处理请求
-	return getRequestLogic().ProcessRequest(msg.Data)
+	responseMsg, logInfo, err := getRequestLogic().ProcessRequest(msg.Data)
+	if err != nil {
+		return responseMsg, err
+	}
+
+	// 记录日志
+	if logInfo != nil {
+		// info级别：记录URL、状态码、响应body大小
+		Info("请求完成: %s %s, 状态码: %d, 响应大小: %d bytes",
+			logInfo.Method, logInfo.URL, logInfo.RespStatus, logInfo.RespBodySize)
+
+		// debug级别：记录请求body和响应body
+		Debug("请求URL: %s %s, 请求Body: %s", logInfo.Method, logInfo.URL, truncateBody(logInfo.ReqBody))
+		Debug("响应Body: %s", truncateBody(logInfo.RespBody))
+	}
+
+	return responseMsg, nil
+}
+
+// truncateBody 截断过长的body内容，避免日志过长
+func truncateBody(body string) string {
+	maxLen := 500
+	if len(body) <= maxLen {
+		return body
+	}
+	return body[:maxLen] + "...(截断)"
 }
 
 // Broadcast 广播消息给所有客户端
