@@ -52,6 +52,17 @@ module.exports = {
           from: 'src/popup/popup.html',
           to: 'popup.html',
         },
+        // 复制popup.css到dist目录
+        {
+          from: 'src/popup/popup.css',
+          to: 'popup.css',
+        },
+        // 复制图标文件
+        {
+          from: 'public/icons',
+          to: 'icons',
+          noErrorOnMissing: true,
+        },
       ],
     }),
   ],

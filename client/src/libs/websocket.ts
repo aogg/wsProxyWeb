@@ -263,7 +263,7 @@ export class WebSocketClient {
       resolve(true);
     } catch (error) {
       console.error('发送消息失败:', error);
-      reject(error);
+      reject(error as Error);
     }
   }
 

@@ -5,7 +5,6 @@ import { CryptoConfig } from '../libs/crypto';
 import { CompressConfig } from '../libs/compress';
 import { StorageUtil, ClientConfig, RuleConfig } from '../libs/storage';
 import { RuleLib } from '../libs/rule_lib';
-import clientConfig from '../configs/client.json';
 
 // WebSocket客户端实例
 let wsClient: WebSocketClient | null = null;
@@ -25,8 +24,8 @@ function generateRequestId(): string {
 // 存储请求信息（用于关联请求和响应）
 interface PendingRequest {
   requestId: string; // 我们生成的请求ID
-  chromeRequestId: number; // Chrome的requestId
-  requestDetails: chrome.webRequest.WebRequestDetails;
+  chromeRequestId: string; // Chrome的requestId
+  requestDetails: chrome.webRequest.OnBeforeRequestDetails;
   headers?: chrome.webRequest.HttpHeader[];
   body?: string;
   bodyEncoding?: 'text' | 'base64';
@@ -34,7 +33,7 @@ interface PendingRequest {
 }
 
 // 存储待处理的请求
-const pendingRequests = new Map<number, PendingRequest>(); // key是chrome的requestId
+const pendingRequests = new Map<string, PendingRequest>(); // key是chrome的requestId
 const pendingRequestsById = new Map<string, PendingRequest>(); // key是我们生成的requestId，用于响应关联
 
 // 初始化WebSocket连接
@@ -47,13 +46,13 @@ async function initWebSocket(): Promise<void> {
     } catch (error) {
       console.warn('从storage读取配置失败，使用默认配置:', error);
       config = {
-        websocketUrl: clientConfig.websocketUrl || 'ws://localhost:8080/ws',
-        crypto: (clientConfig as any).crypto || {
+        websocketUrl: 'ws://localhost:8080/ws',
+        crypto: {
           enabled: false,
           key: '',
           algorithm: 'aes256gcm'
         },
-        compress: (clientConfig as any).compress || {
+        compress: {
           enabled: false,
           level: 6,
           algorithm: 'gzip'
@@ -65,17 +64,17 @@ async function initWebSocket(): Promise<void> {
 
     console.log('初始化WebSocket连接:', wsUrl);
 
-    // 读取加密和压缩配置
-    const cryptoConfig: CryptoConfig = config.crypto || {
-      enabled: false,
-      key: '',
-      algorithm: 'aes256gcm',
+    // 读取加密和压缩配置（使用类型断言确保类型正确）
+    const cryptoConfig: CryptoConfig = {
+      enabled: config.crypto?.enabled ?? false,
+      key: config.crypto?.key ?? '',
+      algorithm: (config.crypto?.algorithm as CryptoConfig['algorithm']) ?? 'aes256gcm',
     };
 
-    const compressConfig: CompressConfig = config.compress || {
-      enabled: false,
-      level: 6,
-      algorithm: 'gzip',
+    const compressConfig: CompressConfig = {
+      enabled: config.compress?.enabled ?? false,
+      level: config.compress?.level ?? 6,
+      algorithm: (config.compress?.algorithm as CompressConfig['algorithm']) ?? 'gzip',
     };
 
     // 如果已有连接，先断开
@@ -208,7 +207,7 @@ function initRequestInterceptor(): void {
 
   // 拦截所有HTTP/HTTPS请求（获取请求体）
   chrome.webRequest.onBeforeRequest.addListener(
-    (details: chrome.webRequest.WebRequestDetails) => {
+    (details: chrome.webRequest.OnBeforeRequestDetails) => {
       // 只处理主框架和子资源请求，跳过扩展内部请求
       if (details.url.startsWith('chrome-extension://') || 
           details.url.startsWith('chrome://') ||
@@ -249,7 +248,9 @@ function initRequestInterceptor(): void {
       // 存储请求信息
       const pendingRequest: PendingRequest = {
         requestId,
-        requestDetails: details
+        chromeRequestId: details.requestId,
+        requestDetails: details,
+        tabId: details.tabId
       };
 
       // 获取请求体
@@ -263,7 +264,7 @@ function initRequestInterceptor(): void {
           const formData = details.requestBody.formData;
           const formPairs: string[] = [];
           for (const [key, values] of Object.entries(formData)) {
-            for (const value of values) {
+            for (const value of values as string[]) {
               formPairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
             }
           }
@@ -287,8 +288,6 @@ function initRequestInterceptor(): void {
 
       pendingRequest.body = requestBody;
       pendingRequest.bodyEncoding = bodyEncoding;
-      pendingRequest.chromeRequestId = details.requestId;
-      pendingRequest.tabId = details.tabId;
       
       // 存储到两个Map中，方便查找
       pendingRequests.set(details.requestId, pendingRequest);
@@ -302,7 +301,7 @@ function initRequestInterceptor(): void {
 
   // 监听请求头（获取完整的请求头信息后发送请求）
   chrome.webRequest.onBeforeSendHeaders.addListener(
-    (details: chrome.webRequest.WebRequestHeadersDetails) => {
+    (details: chrome.webRequest.OnBeforeSendHeadersDetails) => {
       // 查找对应的待处理请求
       const pendingRequest = pendingRequests.get(details.requestId);
       if (!pendingRequest) {
@@ -317,7 +316,7 @@ function initRequestInterceptor(): void {
         // 取消原始请求，等待代理响应
         // 注意：这里不能直接返回cancel，需要在onBeforeRequest中处理
         // 所以我们需要标记这个请求需要代理
-        pendingRequest.requestDetails = { ...pendingRequest.requestDetails, ...details };
+        pendingRequest.requestDetails = { ...pendingRequest.requestDetails, ...details } as chrome.webRequest.OnBeforeRequestDetails;
       }
 
       // 此时有了完整的请求信息，发送到服务端
@@ -327,6 +326,8 @@ function initRequestInterceptor(): void {
         pendingRequest.body || '',
         pendingRequest.bodyEncoding || 'text'
       );
+      
+      return undefined;
     },
     {
       urls: ['<all_urls>']
@@ -366,7 +367,7 @@ async function initRules(): Promise<void> {
  */
 async function sendRequestToServer(
   requestId: string,
-  details: chrome.webRequest.WebRequestDetails,
+  details: chrome.webRequest.OnBeforeRequestDetails,
   requestBody: string,
   bodyEncoding: 'text' | 'base64'
 ): Promise<void> {
@@ -566,22 +567,19 @@ function storeResponseForRequest(key: string, response: StoredResponse): void {
  */
 function triggerResponseInjection(tabId: number, originalUrl: string, dataUrl: string): void {
   // 注入脚本，将响应数据注入到页面
-  const script = `
-    (function() {
+  chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    func: (url: string, data: string) => {
       // 创建一个隐藏的iframe来加载data URL，然后替换原始资源
       // 或者直接修改页面的fetch/XMLHttpRequest
       // 这里使用简单的方法：通过postMessage通知content script
       window.postMessage({
         type: 'WS_PROXY_RESPONSE',
-        url: ${JSON.stringify(originalUrl)},
-        dataUrl: ${JSON.stringify(dataUrl)}
+        url: url,
+        dataUrl: data
       }, '*');
-    })();
-  `;
-
-  chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    func: new Function(script),
+    },
+    args: [originalUrl, dataUrl],
     world: 'MAIN'
   }).catch(err => {
     console.error('注入响应脚本失败:', err);
