@@ -2,6 +2,7 @@
 # mklink /J .codebuddy .cursor 
 .codebuddy
 .kilocode
+/runtime
 
 # Go编译产物
 *.exe
