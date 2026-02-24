@@ -2,6 +2,8 @@
 # mklink /J .codebuddy .cursor 
 .codebuddy
 .kilocode
+.iflow
+
 /runtime
 
 # Go编译产物
