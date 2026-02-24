@@ -18,17 +18,16 @@ import (
 
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
-	port        string
-	clients     map[*websocket.Conn]bool
-	clientsMu   sync.RWMutex
-	ctx         context.Context
-	cancel      context.CancelFunc
-	cryptoLib   *CryptoLib
-	compressLib *CompressLib
-	securityLogic *logic.SecurityLogic
+	port           string
+	clients        map[*websocket.Conn]bool
+	clientsMu      sync.RWMutex
+	ctx            context.Context
+	cancel         context.CancelFunc
+	cryptoLib      *CryptoLib
+	compressLib    *CompressLib
+	securityLogic  *logic.SecurityLogic
 	performanceLib *PerformanceLib
 }
-
 
 // NewWebSocketServer 创建新的WebSocket服务器
 func NewWebSocketServer(port string) *WebSocketServer {
@@ -86,13 +85,13 @@ func NewWebSocketServer(port string) *WebSocketServer {
 		config.Performance.WorkerPoolSize, config.Performance.ChunkSize, config.Performance.EnableMetrics)
 
 	return &WebSocketServer{
-		port:        port,
-		clients:     make(map[*websocket.Conn]bool),
-		ctx:         ctx,
-		cancel:      cancel,
-		cryptoLib:   cryptoLib,
-		compressLib: compressLib,
-		securityLogic: securityLogic,
+		port:           port,
+		clients:        make(map[*websocket.Conn]bool),
+		ctx:            ctx,
+		cancel:         cancel,
+		cryptoLib:      cryptoLib,
+		compressLib:    compressLib,
+		securityLogic:  securityLogic,
 		performanceLib: performanceLib,
 	}
 }
@@ -111,15 +110,15 @@ func (s *WebSocketServer) Start() error {
 // Stop 停止WebSocket服务器
 func (s *WebSocketServer) Stop() {
 	s.cancel()
-	
+
 	// 停止性能优化库
 	if s.performanceLib != nil {
 		s.performanceLib.Stop()
 	}
-	
+
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
-	
+
 	// 关闭所有连接
 	for conn := range s.clients {
 		conn.Close(websocket.StatusNormalClosure, "服务器关闭")
@@ -127,16 +126,26 @@ func (s *WebSocketServer) Stop() {
 	s.clients = make(map[*websocket.Conn]bool)
 }
 
+// HandleWebSocket 处理WebSocket连接（导出的HTTP处理函数）
+func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	s.handleWebSocket(w, r)
+}
+
 // handleWebSocket 处理WebSocket连接
 func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("[DEBUG] handleWebSocket 开始处理连接\n")
 	// 升级HTTP连接为WebSocket连接
+	fmt.Printf("[DEBUG] 开始Accept\n")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"*"}, // 允许所有来源，生产环境应该限制
+		OriginPatterns:  []string{"*"},                 // 允许所有来源，生产环境应该限制
+		CompressionMode: websocket.CompressionDisabled, // 禁用压缩，避免 RSV bits 错误
 	})
 	if err != nil {
 		Error("WebSocket连接失败: %v", err)
+		fmt.Printf("[DEBUG] Accept失败: %v\n", err)
 		return
 	}
+	fmt.Printf("[DEBUG] Accept成功\n")
 	defer conn.Close(websocket.StatusInternalError, "连接关闭")
 
 	clientIP := getClientIP(r)
@@ -187,19 +196,32 @@ func (s *WebSocketServer) getClientCount() int {
 
 // handleMessages 处理客户端消息
 func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) {
-	ctx := conn.CloseRead(s.ctx)
+	defer func() {
+		if r := recover(); r != nil {
+			Error("handleMessages panic: %v", r)
+			fmt.Printf("[DEBUG] handleMessages panic: %v\n", r)
+		}
+	}()
+
+	fmt.Printf("[DEBUG] handleMessages 开始\n")
+	ctx := s.ctx
 
 	for {
 		// 读取原始消息（二进制数据）
+		fmt.Printf("[DEBUG] 等待读取消息...\n")
 		msgType, rawData, err := conn.Read(ctx)
+		fmt.Printf("[DEBUG] 读取到消息: type=%v, len=%d, err=%v\n", msgType, len(rawData), err)
 		if err != nil {
 			// 详细记录读取失败原因
 			closeStatus := websocket.CloseStatus(err)
 			if closeStatus == -1 {
 				// 非WebSocket关闭错误，可能是网络问题
 				Error("读取消息失败: ip=%s, 错误类型=网络错误, 详情: %v", clientIP, err)
+			} else if closeStatus == websocket.StatusNormalClosure || closeStatus == websocket.StatusGoingAway {
+				// 正常关闭，使用 Info 级别
+				Info("客户端关闭连接: ip=%s, 关闭码=%d, 原因: %v", clientIP, closeStatus, err)
 			} else {
-				// WebSocket关闭帧
+				// WebSocket异常关闭帧
 				Error("读取消息失败: ip=%s, 关闭码=%d, 详情: %v", clientIP, closeStatus, err)
 			}
 			return
@@ -217,6 +239,8 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			return
 		}
 
+		Debug("开始处理消息, 数据长度=%d", len(rawData))
+		fmt.Printf("[DEBUG] 收到原始消息, 长度=%d\n", len(rawData))
 		// 解密 → 解压 → 解析JSON
 		msg, err := s.processIncomingMessage(rawData)
 		if err != nil {
@@ -254,7 +278,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 				defer s.performanceLib.DecRequest()
 			}
 			startTime := time.Now()
-			
+
 			// 安全控制：请求校验（IP/域名/请求体大小/限流）
 			if err := s.securityLogic.CheckRequestMessage(clientIP, msg.Data); err != nil {
 				Warn("请求被拒绝: ip=%s, err=%v", clientIP, err)
@@ -285,7 +309,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 				response = *responseMsg
 				response.ID = msg.ID // 确保ID一致
 			}
-			
+
 			// 性能指标：记录响应时间
 			if s.performanceLib != nil {
 				s.performanceLib.RecordResponseTime(time.Since(startTime))
