@@ -375,11 +375,18 @@ async function saveConfig(): Promise<void> {
 // 启用连接
 async function connect(): Promise<void> {
   try {
-    // 检查账号密码
+    // 检查账号密码（优先用表单值，自动保存）
+    const username = authUsernameInput.value.trim();
+    const password = authPasswordInput.value.trim();
     const config = await StorageUtil.getConfig();
-    if (!config.auth?.username || !config.auth?.password) {
-      showMessage('请先填写账号密码并保存配置', 'error');
+    const authUser = username || config.auth?.username;
+    const authPass = password || config.auth?.password;
+    if (!authUser || !authPass) {
+      showMessage('请先填写账号密码', 'error');
       return;
+    }
+    if (username && password) {
+      await StorageUtil.saveConfig({ ...config, auth: { username, password } });
     }
 
     showMessage('正在启用连接...', 'info');
@@ -422,10 +429,17 @@ async function disconnect(): Promise<void> {
 // 重新连接
 async function reconnect(): Promise<void> {
   try {
+    const username = authUsernameInput.value.trim();
+    const password = authPasswordInput.value.trim();
     const config = await StorageUtil.getConfig();
-    if (!config.auth?.username || !config.auth?.password) {
-      showMessage('请先填写账号密码并保存配置', 'error');
+    const authUser = username || config.auth?.username;
+    const authPass = password || config.auth?.password;
+    if (!authUser || !authPass) {
+      showMessage('请先填写账号密码', 'error');
       return;
+    }
+    if (username && password) {
+      await StorageUtil.saveConfig({ ...config, auth: { username, password } });
     }
 
     showMessage('正在重新连接...', 'info');
@@ -578,6 +592,10 @@ async function handleLogin(): Promise<void> {
     showMessage('请输入用户名和密码', 'error');
     return;
   }
+
+  // 自动保存凭据到配置
+  const config = await StorageUtil.getConfig();
+  await StorageUtil.saveConfig({ ...config, auth: { username, password } });
 
   showMessage('登录中...', 'info');
   try {
