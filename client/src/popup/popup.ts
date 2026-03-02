@@ -525,7 +525,8 @@ async function resetConfig(): Promise<void> {
         enabled: false,
         level: 6,
         algorithm: 'gzip'
-      }
+      },
+      auth: undefined
     };
 
     const defaultRules: RuleConfig = {
@@ -537,9 +538,12 @@ async function resetConfig(): Promise<void> {
 
     await StorageUtil.saveConfig(defaultConfig);
     await StorageUtil.saveRules(defaultRules);
+    // 清除登录状态和账号密码
+    await StorageUtil.clearAuthState();
 
     // 更新按钮状态
     updateProxyButtonState(false);
+    updateAuthDisplay(null);
 
     // 重新加载配置
     await loadConfig();
