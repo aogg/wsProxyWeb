@@ -33,6 +33,15 @@ export type StatusChangeCallback = (status: ConnectionStatus) => void;
 // 消息接收回调
 export type MessageCallback = (message: Message) => void;
 
+// 认证结果
+export interface AuthResult {
+  success: boolean;
+  isAdmin: boolean;
+  username: string;
+  token?: string;
+  message?: string;
+}
+
 // 默认配置
 const DEFAULT_CONFIG = {
   requestQueueSize: 100,      // 请求队列最大长度
@@ -66,6 +75,11 @@ export class WebSocketClient {
   private maxRetryAttempts: number = DEFAULT_CONFIG.maxRetryAttempts;
   private retryDelay: number = DEFAULT_CONFIG.retryDelay;
   private queueCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+  // 认证状态
+  private authenticated: boolean = false;
+  private authUsername: string = '';
+  private authIsAdmin: boolean = false;
 
   constructor(url: string, cryptoConfig?: CryptoConfig, compressConfig?: CompressConfig) {
     this.url = url;
@@ -539,6 +553,65 @@ export class WebSocketClient {
         item.reject(error);
       }
     }
+  }
+
+  /**
+   * 发送认证请求
+   */
+  public async sendAuth(username: string, password: string): Promise<AuthResult> {
+    const msg: Message = {
+      id: `auth_${Date.now()}`,
+      type: 'auth',
+      data: { username, password }
+    };
+
+    return new Promise((resolve) => {
+      // 临时监听auth_result
+      const handler = (message: Message) => {
+        if (message.type === 'auth_result') {
+          this.offMessage(handler);
+          const data = message.data || {};
+          if (data.success) {
+            this.authenticated = true;
+            this.authUsername = data.username || username;
+            this.authIsAdmin = data.isAdmin || false;
+          }
+          resolve({
+            success: data.success,
+            isAdmin: data.isAdmin || false,
+            username: data.username || username,
+            token: data.token,
+            message: data.message,
+          });
+        }
+      };
+      this.onMessage(handler);
+      this.send(msg).catch(() => {
+        this.offMessage(handler);
+        resolve({ success: false, isAdmin: false, username, message: '发送认证请求失败' });
+      });
+    });
+  }
+
+  /**
+   * 获取认证状态
+   */
+  public isAuthenticated(): boolean {
+    return this.authenticated;
+  }
+
+  /**
+   * 获取是否管理员
+   */
+  public isAdmin(): boolean {
+    return this.authIsAdmin;
+  }
+
+  /**
+   * 获取认证用户名
+   */
+  public getAuthUsername(): string {
+    return this.authUsername;
   }
 
   /**

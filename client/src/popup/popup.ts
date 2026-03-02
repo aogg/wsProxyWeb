@@ -1,6 +1,6 @@
 // 弹窗界面脚本
 
-import { StorageUtil, ClientConfig, RuleConfig } from '../libs/storage';
+import { StorageUtil, ClientConfig, RuleConfig, AuthState } from '../libs/storage';
 
 // 界面元素
 let websocketUrlInput: HTMLInputElement;
@@ -25,6 +25,18 @@ let resetBtn: HTMLButtonElement;
 let statusDot: HTMLElement;
 let statusText: HTMLElement;
 let connectionTime: HTMLElement;
+
+// 认证相关元素
+let authUsernameInput: HTMLInputElement;
+let authPasswordInput: HTMLInputElement;
+let loginBtn: HTMLButtonElement;
+let loginForm: HTMLElement;
+let authInfo: HTMLElement;
+let authUserDisplay: HTMLElement;
+let adminBadge: HTMLElement;
+let logoutBtn: HTMLButtonElement;
+let changePwdToggle: HTMLButtonElement;
+let userManageToggle: HTMLButtonElement;
 
 // 初始化界面
 async function init(): Promise<void> {
@@ -52,10 +64,23 @@ async function init(): Promise<void> {
   statusText = document.getElementById('statusText') as HTMLElement;
   connectionTime = document.getElementById('connectionTime') as HTMLElement;
 
+  // 认证相关元素
+  authUsernameInput = document.getElementById('authUsername') as HTMLInputElement;
+  authPasswordInput = document.getElementById('authPassword') as HTMLInputElement;
+  loginBtn = document.getElementById('loginBtn') as HTMLButtonElement;
+  loginForm = document.getElementById('loginForm') as HTMLElement;
+  authInfo = document.getElementById('authInfo') as HTMLElement;
+  authUserDisplay = document.getElementById('authUserDisplay') as HTMLElement;
+  adminBadge = document.getElementById('adminBadge') as HTMLElement;
+  logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
+  changePwdToggle = document.getElementById('changePwdToggle') as HTMLButtonElement;
+  userManageToggle = document.getElementById('userManageToggle') as HTMLButtonElement;
+
   // 加载配置
   await loadConfig();
   await loadRules();
   await updateConnectionStatus();
+  await loadAuthState();
 
   // 绑定事件
   bindEvents();
@@ -63,6 +88,11 @@ async function init(): Promise<void> {
   // 监听状态变化
   StorageUtil.onStatusChange((status, time) => {
     updateStatusDisplay(status, time);
+  });
+
+  // 监听认证状态变化
+  StorageUtil.onAuthStateChange((state) => {
+    updateAuthDisplay(state);
   });
 }
 
@@ -229,6 +259,41 @@ function bindEvents(): void {
   compressLevelInput.addEventListener('input', () => {
     compressLevelValue.textContent = compressLevelInput.value;
   });
+
+  // 登录
+  loginBtn.addEventListener('click', handleLogin);
+
+  // 退出登录
+  logoutBtn.addEventListener('click', handleLogout);
+
+  // 修改密码切换
+  changePwdToggle.addEventListener('click', () => {
+    const section = document.getElementById('changePwdSection') as HTMLElement;
+    section.style.display = section.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // 修改密码确认
+  document.getElementById('changePwdBtn')?.addEventListener('click', handleChangePassword);
+  document.getElementById('changePwdCancel')?.addEventListener('click', () => {
+    (document.getElementById('changePwdSection') as HTMLElement).style.display = 'none';
+  });
+
+  // 用户管理切换
+  userManageToggle.addEventListener('click', () => {
+    const section = document.getElementById('userManageSection') as HTMLElement;
+    if (section.style.display === 'none') {
+      section.style.display = 'block';
+      loadUserList();
+    } else {
+      section.style.display = 'none';
+    }
+  });
+
+  // 添加用户
+  document.getElementById('addUserBtn')?.addEventListener('click', handleAddUser);
+  document.getElementById('userManageClose')?.addEventListener('click', () => {
+    (document.getElementById('userManageSection') as HTMLElement).style.display = 'none';
+  });
 }
 
 // 切换加密配置显示
@@ -276,6 +341,10 @@ async function saveConfig(): Promise<void> {
         enabled: compressEnabledCheckbox.checked,
         level: parseInt(compressLevelInput.value),
         algorithm: compressAlgorithmSelect.value
+      },
+      auth: {
+        username: authUsernameInput.value.trim(),
+        password: authPasswordInput.value.trim() || (await StorageUtil.getConfig()).auth?.password || '',
       }
     };
 
@@ -306,6 +375,13 @@ async function saveConfig(): Promise<void> {
 // 启用连接
 async function connect(): Promise<void> {
   try {
+    // 检查账号密码
+    const config = await StorageUtil.getConfig();
+    if (!config.auth?.username || !config.auth?.password) {
+      showMessage('请先填写账号密码并保存配置', 'error');
+      return;
+    }
+
     showMessage('正在启用连接...', 'info');
     
     const response = await chrome.runtime.sendMessage({ type: 'connect' });
@@ -346,6 +422,12 @@ async function disconnect(): Promise<void> {
 // 重新连接
 async function reconnect(): Promise<void> {
   try {
+    const config = await StorageUtil.getConfig();
+    if (!config.auth?.username || !config.auth?.password) {
+      showMessage('请先填写账号密码并保存配置', 'error');
+      return;
+    }
+
     showMessage('正在重新连接...', 'info');
     
     // 先停止连接，再启用连接
@@ -458,6 +540,191 @@ async function resetConfig(): Promise<void> {
   } catch (error) {
     console.error('重置配置失败:', error);
     showMessage('重置配置失败', 'error');
+  }
+}
+
+// 加载认证状态
+async function loadAuthState(): Promise<void> {
+  const state = await StorageUtil.getAuthState();
+  updateAuthDisplay(state);
+  // 填充已保存的账号
+  const config = await StorageUtil.getConfig();
+  if (config.auth?.username) {
+    authUsernameInput.value = config.auth.username;
+  }
+}
+
+// 更新认证界面显示
+function updateAuthDisplay(state: AuthState | null): void {
+  if (state?.authenticated) {
+    loginForm.style.display = 'none';
+    authInfo.style.display = 'block';
+    authUserDisplay.textContent = state.username;
+    adminBadge.style.display = state.isAdmin ? 'inline' : 'none';
+    userManageToggle.style.display = state.isAdmin ? 'inline-block' : 'none';
+  } else {
+    loginForm.style.display = 'block';
+    authInfo.style.display = 'none';
+    (document.getElementById('changePwdSection') as HTMLElement).style.display = 'none';
+    (document.getElementById('userManageSection') as HTMLElement).style.display = 'none';
+  }
+}
+
+// 处理登录
+async function handleLogin(): Promise<void> {
+  const username = authUsernameInput.value.trim();
+  const password = authPasswordInput.value.trim();
+  if (!username || !password) {
+    showMessage('请输入用户名和密码', 'error');
+    return;
+  }
+
+  showMessage('登录中...', 'info');
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'login',
+      data: { username, password }
+    });
+    if (result.success) {
+      showMessage('登录成功', 'success');
+      authPasswordInput.value = '';
+    } else {
+      showMessage(result.message || '登录失败', 'error');
+    }
+  } catch (error) {
+    showMessage('登录失败', 'error');
+  }
+}
+
+// 处理退出登录
+async function handleLogout(): Promise<void> {
+  await chrome.runtime.sendMessage({ type: 'logout' });
+  updateAuthDisplay(null);
+  showMessage('已退出登录', 'success');
+}
+
+// 处理修改密码
+async function handleChangePassword(): Promise<void> {
+  const oldPwd = (document.getElementById('oldPassword') as HTMLInputElement).value;
+  const newPwd = (document.getElementById('newPassword') as HTMLInputElement).value;
+  const confirmPwd = (document.getElementById('confirmPassword') as HTMLInputElement).value;
+
+  if (!oldPwd || !newPwd) {
+    showMessage('请填写完整', 'error');
+    return;
+  }
+  if (newPwd !== confirmPwd) {
+    showMessage('两次密码不一致', 'error');
+    return;
+  }
+
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'wsMessage',
+      data: { type: 'change_password', data: { oldPassword: oldPwd, newPassword: newPwd } }
+    });
+    if (result.success) {
+      showMessage('密码修改成功', 'success');
+      (document.getElementById('changePwdSection') as HTMLElement).style.display = 'none';
+      // 更新存储的密码
+      const config = await StorageUtil.getConfig();
+      if (config.auth) {
+        await StorageUtil.saveConfig({ ...config, auth: { ...config.auth, password: newPwd } });
+      }
+    } else {
+      showMessage(result.message || '修改失败', 'error');
+    }
+  } catch (error) {
+    showMessage('修改密码失败', 'error');
+  }
+}
+
+// 加载用户列表
+async function loadUserList(): Promise<void> {
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'wsMessage',
+      data: { type: 'user_list', data: {} }
+    });
+    if (result.success) {
+      renderUserTable(result.users || []);
+    } else {
+      showMessage(result.message || '获取用户列表失败', 'error');
+    }
+  } catch (error) {
+    showMessage('获取用户列表失败', 'error');
+  }
+}
+
+// 渲染用户表格
+function renderUserTable(users: Array<{ username: string; isAdmin: boolean }>): void {
+  const tbody = document.getElementById('userTableBody') as HTMLElement;
+  tbody.innerHTML = '';
+  for (const user of users) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${user.username}</td>
+      <td>${user.isAdmin ? '管理员' : '普通用户'}</td>
+      <td><button class="btn btn-danger btn-sm delete-user-btn" data-username="${user.username}">删除</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  // 绑定删除按钮
+  tbody.querySelectorAll('.delete-user-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const username = (e.target as HTMLElement).getAttribute('data-username');
+      if (username && confirm(`确定删除用户 ${username}？`)) {
+        await handleDeleteUser(username);
+      }
+    });
+  });
+}
+
+// 处理添加用户
+async function handleAddUser(): Promise<void> {
+  const username = (document.getElementById('newUsername') as HTMLInputElement).value.trim();
+  const password = (document.getElementById('newUserPassword') as HTMLInputElement).value.trim();
+  const isAdmin = (document.getElementById('newUserIsAdmin') as HTMLInputElement).checked;
+
+  if (!username || !password) {
+    showMessage('请填写用户名和密码', 'error');
+    return;
+  }
+
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'wsMessage',
+      data: { type: 'user_create', data: { username, password, isAdmin } }
+    });
+    if (result.success) {
+      showMessage('用户创建成功', 'success');
+      (document.getElementById('newUsername') as HTMLInputElement).value = '';
+      (document.getElementById('newUserPassword') as HTMLInputElement).value = '';
+      (document.getElementById('newUserIsAdmin') as HTMLInputElement).checked = false;
+      loadUserList();
+    } else {
+      showMessage(result.message || '创建失败', 'error');
+    }
+  } catch (error) {
+    showMessage('创建用户失败', 'error');
+  }
+}
+
+// 处理删除用户
+async function handleDeleteUser(username: string): Promise<void> {
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: 'wsMessage',
+      data: { type: 'user_delete', data: { username } }
+    });
+    if (result.success) {
+      showMessage('用户已删除', 'success');
+      loadUserList();
+    } else {
+      showMessage(result.message || '删除失败', 'error');
+    }
+  } catch (error) {
+    showMessage('删除用户失败', 'error');
   }
 }
 

@@ -16,10 +16,17 @@ import (
 	"wsProxyWeb/server/src/types"
 )
 
+// clientInfo 客户端连接信息（含认证状态）
+type clientInfo struct {
+	authenticated bool
+	username      string
+	isAdmin       bool
+}
+
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
 	port           string
-	clients        map[*websocket.Conn]bool
+	clients        map[*websocket.Conn]*clientInfo
 	clientsMu      sync.RWMutex
 	ctx            context.Context
 	cancel         context.CancelFunc
@@ -27,6 +34,8 @@ type WebSocketServer struct {
 	compressLib    *CompressLib
 	securityLogic  *logic.SecurityLogic
 	performanceLib *PerformanceLib
+	authLogic      *logic.AuthLogic
+	authEnabled    bool
 }
 
 // NewWebSocketServer 创建新的WebSocket服务器
@@ -84,15 +93,30 @@ func NewWebSocketServer(port string) *WebSocketServer {
 	Info("性能优化: workerPool=%d, chunkSize=%d, metrics=%v",
 		config.Performance.WorkerPoolSize, config.Performance.ChunkSize, config.Performance.EnableMetrics)
 
+	// 初始化认证逻辑
+	var authLogic *logic.AuthLogic
+	authEnabled := config.Auth.Enabled
+	if authEnabled {
+		authLogic = logic.GetAuthLogic(config.Auth.UserDataDir)
+		if err := authLogic.InitAdmin(config.Auth.AdminUsername, config.Auth.AdminPassword); err != nil {
+			Warn("初始化管理员账号失败: %v", err)
+		}
+		Info("认证功能: 已启用 (管理员: %s)", config.Auth.AdminUsername)
+	} else {
+		Info("认证功能: 已禁用")
+	}
+
 	return &WebSocketServer{
 		port:           port,
-		clients:        make(map[*websocket.Conn]bool),
+		clients:        make(map[*websocket.Conn]*clientInfo),
 		ctx:            ctx,
 		cancel:         cancel,
 		cryptoLib:      cryptoLib,
 		compressLib:    compressLib,
 		securityLogic:  securityLogic,
 		performanceLib: performanceLib,
+		authLogic:      authLogic,
+		authEnabled:    authEnabled,
 	}
 }
 
@@ -123,7 +147,7 @@ func (s *WebSocketServer) Stop() {
 	for conn := range s.clients {
 		conn.Close(websocket.StatusNormalClosure, "服务器关闭")
 	}
-	s.clients = make(map[*websocket.Conn]bool)
+	s.clients = make(map[*websocket.Conn]*clientInfo)
 }
 
 // HandleWebSocket 处理WebSocket连接（导出的HTTP处理函数）
@@ -176,7 +200,7 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 func (s *WebSocketServer) addClient(conn *websocket.Conn) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
-	s.clients[conn] = true
+	s.clients[conn] = &clientInfo{}
 }
 
 // removeClient 移除客户端
@@ -185,6 +209,13 @@ func (s *WebSocketServer) removeClient(conn *websocket.Conn) {
 	defer s.clientsMu.Unlock()
 	delete(s.clients, conn)
 	Info("客户端断开连接，当前连接数: %d", len(s.clients))
+}
+
+// getClientInfo 获取客户端认证信息
+func (s *WebSocketServer) getClientInfo(conn *websocket.Conn) *clientInfo {
+	s.clientsMu.RLock()
+	defer s.clientsMu.RUnlock()
+	return s.clients[conn]
 }
 
 // getClientCount 获取客户端数量
@@ -262,11 +293,42 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 
 		Debug("收到消息: ID=%s, Type=%s", msg.ID, msg.Type)
 
+		// 获取客户端认证信息
+		ci := s.getClientInfo(conn)
+
+		// 认证检查：未认证时只允许auth消息
+		if s.authEnabled && !ci.authenticated && msg.Type != "auth" {
+			response := types.Message{
+				ID:   msg.ID,
+				Type: "error",
+				Data: map[string]interface{}{
+					"code":    "AUTH_REQUIRED",
+					"message": "请先登录认证",
+				},
+			}
+			if err := s.sendMessage(ctx, conn, response); err != nil {
+				Error("发送认证要求失败: %v", err)
+			}
+			continue
+		}
+
 		// 处理不同类型的消息
 		var response types.Message
 		response.ID = msg.ID
 
 		switch msg.Type {
+		case "auth":
+			response = s.handleAuth(conn, msg, ci)
+		case "change_password":
+			response = s.handleChangePassword(msg, ci)
+		case "user_list":
+			response = s.handleUserList(msg, ci)
+		case "user_create":
+			response = s.handleUserCreate(msg, ci)
+		case "user_delete":
+			response = s.handleUserDelete(msg, ci)
+		case "user_update":
+			response = s.handleUserUpdate(msg, ci)
 		case "ping":
 			// 心跳消息，回复pong
 			response.Type = "pong"
@@ -446,6 +508,161 @@ func truncateBody(body string) string {
 		return body
 	}
 	return body[:maxLen] + "...(截断)"
+}
+
+// handleAuth 处理认证消息
+func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "auth_result"}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的认证数据"}
+		return response
+	}
+
+	username, _ := data["username"].(string)
+	password, _ := data["password"].(string)
+
+	session, err := s.authLogic.Authenticate(username, password)
+	if err != nil {
+		Warn("认证失败: username=%s, err=%v", username, err)
+		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
+		return response
+	}
+
+	// 更新客户端认证状态
+	s.clientsMu.Lock()
+	ci.authenticated = true
+	ci.username = session.Username
+	ci.isAdmin = session.IsAdmin
+	s.clientsMu.Unlock()
+
+	Info("用户认证成功: username=%s, isAdmin=%v", username, session.IsAdmin)
+	response.Data = map[string]interface{}{
+		"success":  true,
+		"isAdmin":  session.IsAdmin,
+		"username": session.Username,
+		"token":    session.Token,
+	}
+	return response
+}
+
+// handleChangePassword 处理修改密码
+func (s *WebSocketServer) handleChangePassword(msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "change_password_result"}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	oldPassword, _ := data["oldPassword"].(string)
+	newPassword, _ := data["newPassword"].(string)
+
+	if err := s.authLogic.ChangePassword(ci.username, oldPassword, newPassword); err != nil {
+		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
+		return response
+	}
+
+	Info("用户修改密码成功: username=%s", ci.username)
+	response.Data = map[string]interface{}{"success": true, "message": "密码修改成功"}
+	return response
+}
+
+// handleUserList 处理用户列表请求（管理员）
+func (s *WebSocketServer) handleUserList(msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "user_list_result"}
+	if !ci.isAdmin {
+		response.Data = map[string]interface{}{"success": false, "message": "权限不足"}
+		return response
+	}
+	response.Data = map[string]interface{}{"success": true, "users": s.authLogic.ListUsers()}
+	return response
+}
+
+// handleUserCreate 处理创建用户（管理员）
+func (s *WebSocketServer) handleUserCreate(msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "user_manage_result"}
+	if !ci.isAdmin {
+		response.Data = map[string]interface{}{"success": false, "message": "权限不足"}
+		return response
+	}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	username, _ := data["username"].(string)
+	password, _ := data["password"].(string)
+	isAdmin, _ := data["isAdmin"].(bool)
+
+	if err := s.authLogic.CreateUser(username, password, isAdmin); err != nil {
+		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
+		return response
+	}
+
+	Info("管理员%s创建用户: %s", ci.username, username)
+	response.Data = map[string]interface{}{"success": true, "message": "用户创建成功"}
+	return response
+}
+
+// handleUserDelete 处理删除用户（管理员）
+func (s *WebSocketServer) handleUserDelete(msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "user_manage_result"}
+	if !ci.isAdmin {
+		response.Data = map[string]interface{}{"success": false, "message": "权限不足"}
+		return response
+	}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	username, _ := data["username"].(string)
+	if err := s.authLogic.DeleteUser(username, ci.username); err != nil {
+		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
+		return response
+	}
+
+	Info("管理员%s删除用户: %s", ci.username, username)
+	response.Data = map[string]interface{}{"success": true, "message": "用户删除成功"}
+	return response
+}
+
+// handleUserUpdate 处理更新用户（管理员）
+func (s *WebSocketServer) handleUserUpdate(msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "user_manage_result"}
+	if !ci.isAdmin {
+		response.Data = map[string]interface{}{"success": false, "message": "权限不足"}
+		return response
+	}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	username, _ := data["username"].(string)
+	newPassword, _ := data["password"].(string)
+	var isAdmin *bool
+	if v, ok := data["isAdmin"].(bool); ok {
+		isAdmin = &v
+	}
+
+	if err := s.authLogic.UpdateUser(username, newPassword, isAdmin); err != nil {
+		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
+		return response
+	}
+
+	Info("管理员%s更新用户: %s", ci.username, username)
+	response.Data = map[string]interface{}{"success": true, "message": "用户更新成功"}
+	return response
 }
 
 // Broadcast 广播消息给所有客户端

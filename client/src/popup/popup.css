@@ -291,3 +291,42 @@ body {
 .main-content::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* 用户管理表格 */
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.user-table th,
+.user-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.user-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #555;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* 认证区域 */
+#authInfo .form-group {
+  display: flex;
+  align-items: center;
+}
+
+.config-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 8px;
+  color: #555;
+}

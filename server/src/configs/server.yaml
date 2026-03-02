@@ -14,6 +14,13 @@ log:
   colorConsole: true    # 控制台是否彩色输出
   maxAgeDays: 30        # 日志保留天数（0表示不清理）
 
+# 认证配置
+auth:
+  enabled: true              # 是否启用认证
+  adminUsername: "admin"     # 管理员用户名
+  adminPassword: "admin"  # 管理员初始密码（首次启动后会bcrypt加密存储到users.json）
+  userDataDir: "runtime/server/data"  # 用户数据存储目录
+
 # 加密配置
 crypto:
   enabled: false  # 是否启用加密（true/false）

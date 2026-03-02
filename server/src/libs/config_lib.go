@@ -10,13 +10,22 @@ import (
 
 // ServerConfig 服务端配置结构
 type ServerConfig struct {
-	Server      ServerConfigServer  `mapstructure:"server"`
-	Log         LogConfig           `mapstructure:"log"`
-	Crypto      CryptoConfig        `mapstructure:"crypto"`
-	Compress    CompressConfig      `mapstructure:"compress"`
-	Security    SecurityConfig      `mapstructure:"security"`
-	HTTP        HTTPConfig          `mapstructure:"http"`
-	Performance PerformanceConfig   `mapstructure:"performance"`
+	Server      ServerConfigServer `mapstructure:"server"`
+	Log         LogConfig          `mapstructure:"log"`
+	Auth        AuthConfig         `mapstructure:"auth"`
+	Crypto      CryptoConfig       `mapstructure:"crypto"`
+	Compress    CompressConfig     `mapstructure:"compress"`
+	Security    SecurityConfig     `mapstructure:"security"`
+	HTTP        HTTPConfig         `mapstructure:"http"`
+	Performance PerformanceConfig  `mapstructure:"performance"`
+}
+
+// AuthConfig 认证配置
+type AuthConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	AdminUsername string `mapstructure:"adminUsername"`
+	AdminPassword string `mapstructure:"adminPassword"`
+	UserDataDir   string `mapstructure:"userDataDir"`
 }
 
 // ServerConfigServer 服务器配置
@@ -26,27 +35,27 @@ type ServerConfigServer struct {
 
 // CryptoConfig 加密配置
 type CryptoConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Key     string `mapstructure:"key"`     // 加密密钥（32字节，Base64编码）
+	Enabled   bool   `mapstructure:"enabled"`
+	Key       string `mapstructure:"key"`       // 加密密钥（32字节，Base64编码）
 	Algorithm string `mapstructure:"algorithm"` // 加密算法：aes256gcm 或 chacha20poly1305
 }
 
 // CompressConfig 压缩配置
 type CompressConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Level   int    `mapstructure:"level"`   // 压缩级别：1-9，默认6
+	Enabled   bool   `mapstructure:"enabled"`
+	Level     int    `mapstructure:"level"`     // 压缩级别：1-9，默认6
 	Algorithm string `mapstructure:"algorithm"` // 压缩算法：gzip 或 snappy
 }
 
 // SecurityConfig 安全控制配置
 type SecurityConfig struct {
-	Enabled             bool     `mapstructure:"enabled"`
-	MaxConnections      int      `mapstructure:"maxConnections"`      // 最大连接数（0表示不限制）
-	MaxMessageBytes     int      `mapstructure:"maxMessageBytes"`     // 单条消息最大字节数（0表示不限制，指解密前rawData大小）
-	MaxRequestBodyBytes int      `mapstructure:"maxRequestBodyBytes"` // 请求体最大字节数（0表示不限制，指解码后的字节数）
+	Enabled             bool `mapstructure:"enabled"`
+	MaxConnections      int  `mapstructure:"maxConnections"`      // 最大连接数（0表示不限制）
+	MaxMessageBytes     int  `mapstructure:"maxMessageBytes"`     // 单条消息最大字节数（0表示不限制，指解密前rawData大小）
+	MaxRequestBodyBytes int  `mapstructure:"maxRequestBodyBytes"` // 请求体最大字节数（0表示不限制，指解码后的字节数）
 
-	RateLimitPerSecond float64  `mapstructure:"rateLimitPerSecond"` // 每秒允许的请求数（<=0表示不限制）
-	RateBurst          int      `mapstructure:"rateBurst"`          // 突发容量（<=0时将按rate自动给默认值）
+	RateLimitPerSecond float64 `mapstructure:"rateLimitPerSecond"` // 每秒允许的请求数（<=0表示不限制）
+	RateBurst          int     `mapstructure:"rateBurst"`          // 突发容量（<=0时将按rate自动给默认值）
 
 	AllowIPs     []string `mapstructure:"allowIPs"`     // 允许IP列表，支持单IP或CIDR（为空表示不限制）
 	DenyIPs      []string `mapstructure:"denyIPs"`      // 拒绝IP列表，支持单IP或CIDR
@@ -141,6 +150,12 @@ func setDefaultConfig() {
 	viper.SetDefault("log.colorConsole", true)
 	viper.SetDefault("log.maxAgeDays", 30)
 
+	// 认证默认配置
+	viper.SetDefault("auth.enabled", true)
+	viper.SetDefault("auth.adminUsername", "admin")
+	viper.SetDefault("auth.adminPassword", "admin123")
+	viper.SetDefault("auth.userDataDir", "runtime/server/data")
+
 	// 加密默认配置
 	viper.SetDefault("crypto.enabled", false)
 	viper.SetDefault("crypto.key", "")
@@ -172,11 +187,11 @@ func setDefaultConfig() {
 	viper.SetDefault("http.expectContinueTimeoutSeconds", 1)
 
 	// 性能优化默认配置
-	viper.SetDefault("performance.workerPoolSize", 0)        // 默认不使用worker池
+	viper.SetDefault("performance.workerPoolSize", 0) // 默认不使用worker池
 	viper.SetDefault("performance.requestQueueSize", 1000)
-	viper.SetDefault("performance.maxConcurrentConns", 0)    // 不限制
+	viper.SetDefault("performance.maxConcurrentConns", 0) // 不限制
 	viper.SetDefault("performance.bufferPoolSize", 100)
-	viper.SetDefault("performance.chunkSize", 65536)         // 64KB
+	viper.SetDefault("performance.chunkSize", 65536) // 64KB
 	viper.SetDefault("performance.enableMetrics", true)
 	viper.SetDefault("performance.metricsIntervalSec", 30)
 }

@@ -1,9 +1,9 @@
 // 浏览器插件后台脚本
 
-import { WebSocketClient, ConnectionStatus, Message } from '../libs/websocket';
+import { WebSocketClient, ConnectionStatus, Message, AuthResult } from '../libs/websocket';
 import { CryptoConfig } from '../libs/crypto';
 import { CompressConfig } from '../libs/compress';
-import { StorageUtil, ClientConfig, RuleConfig } from '../libs/storage';
+import { StorageUtil, ClientConfig, RuleConfig, AuthState } from '../libs/storage';
 import { RuleLib } from '../libs/rule_lib';
 
 // 初始化状态键名
@@ -96,6 +96,12 @@ async function initWebSocket(): Promise<void> {
 
     const wsUrl = config.websocketUrl || 'ws://localhost:8080/ws';
 
+    // 检查账号密码是否已配置
+    if (!config.auth?.username || !config.auth?.password) {
+      console.warn('未配置账号密码，无法连接WebSocket');
+      throw new Error('请先配置账号密码');
+    }
+
     console.log('初始化WebSocket连接:', wsUrl);
 
     // 读取加密和压缩配置（使用类型断言确保类型正确）
@@ -126,9 +132,10 @@ async function initWebSocket(): Promise<void> {
     wsClient.onStatusChange((status: ConnectionStatus) => {
       console.log('WebSocket连接状态:', status);
 
-      // 连接成功时标记已初始化
+      // 连接成功时标记已初始化并自动认证
       if (status === ConnectionStatus.Connected) {
         globalThis.__WS_INITIALIZED__ = true;
+        autoAuth();
       }
 
       // 通过storage记录状态，供popup读取
@@ -341,6 +348,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: error.message });
     });
     return true;
+  } else if (message.type === 'login') {
+    // 登录认证
+    handleLogin(message.data).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ success: false, message: error.message });
+    });
+    return true;
+  } else if (message.type === 'logout') {
+    StorageUtil.clearAuthState().then(() => {
+      sendResponse({ success: true });
+    });
+    return true;
+  } else if (message.type === 'wsMessage') {
+    // 通用WS消息转发（用于changePassword、userList、userCreate、userDelete、userUpdate）
+    handleWsMessage(message.data).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ success: false, message: error.message });
+    });
+    return true;
   }
   
   return true; // 保持消息通道开放以支持异步响应
@@ -385,7 +413,100 @@ async function disconnectWebSocket(): Promise<void> {
     globalThis.__WS_INITIALIZED__ = false;
     updateConnectionStatus(ConnectionStatus.Disconnected);
   }
+  await StorageUtil.clearAuthState();
   console.log('WebSocket连接已停止');
+}
+
+// 自动认证（连接成功后使用存储的账号密码）
+async function autoAuth(): Promise<void> {
+  if (!wsClient) return;
+  try {
+    const config = await StorageUtil.getConfig();
+    if (config.auth?.username && config.auth?.password) {
+      console.log('自动认证中...');
+      const result = await wsClient.sendAuth(config.auth.username, config.auth.password);
+      if (result.success) {
+        await StorageUtil.saveAuthState({
+          authenticated: true,
+          username: result.username,
+          isAdmin: result.isAdmin,
+          token: result.token || '',
+        });
+        console.log('自动认证成功:', result.username);
+      } else {
+        await StorageUtil.clearAuthState();
+        console.warn('自动认证失败:', result.message);
+      }
+    }
+  } catch (error) {
+    console.error('自动认证异常:', error);
+  }
+}
+
+// 处理登录请求
+async function handleLogin(data: { username: string; password: string }): Promise<AuthResult> {
+  if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
+    return { success: false, isAdmin: false, username: data.username, message: 'WebSocket未连接' };
+  }
+
+  const result = await wsClient.sendAuth(data.username, data.password);
+  if (result.success) {
+    // 保存账号到配置
+    const config = await StorageUtil.getConfig();
+    await StorageUtil.saveConfig({ ...config, auth: { username: data.username, password: data.password } });
+    // 保存认证状态
+    await StorageUtil.saveAuthState({
+      authenticated: true,
+      username: result.username,
+      isAdmin: result.isAdmin,
+      token: result.token || '',
+    });
+  }
+  return result;
+}
+
+// 通用WS消息转发（用于管理操作）
+async function handleWsMessage(data: { type: string; data?: any }): Promise<any> {
+  if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
+    return { success: false, message: 'WebSocket未连接' };
+  }
+
+  const msgId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const expectedResponseType = getResponseType(data.type);
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      wsClient?.offMessage(handler);
+      resolve({ success: false, message: '请求超时' });
+    }, 10000);
+
+    const handler = (message: Message) => {
+      if (message.type === expectedResponseType) {
+        clearTimeout(timeout);
+        wsClient?.offMessage(handler);
+        resolve(message.data);
+      }
+    };
+
+    wsClient!.onMessage(handler);
+    wsClient!.send({ id: msgId, type: data.type, data: data.data }).catch((err) => {
+      clearTimeout(timeout);
+      wsClient?.offMessage(handler);
+      resolve({ success: false, message: err.message });
+    });
+  });
+}
+
+// 获取消息对应的响应类型
+function getResponseType(type: string): string {
+  const map: Record<string, string> = {
+    'change_password': 'change_password_result',
+    'user_list': 'user_list_result',
+    'user_create': 'user_manage_result',
+    'user_delete': 'user_manage_result',
+    'user_update': 'user_manage_result',
+  };
+  return map[type] || `${type}_result`;
 }
 
 /**

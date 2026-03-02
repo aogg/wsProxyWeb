@@ -14,6 +14,18 @@ export interface ClientConfig {
     level: number;
     algorithm: string;
   };
+  auth?: {
+    username: string;
+    password: string;
+  };
+}
+
+// 认证状态接口
+export interface AuthState {
+  authenticated: boolean;
+  username: string;
+  isAdmin: boolean;
+  token: string;
 }
 
 // 拦截规则配置接口
@@ -31,6 +43,7 @@ export class StorageUtil {
   private static readonly KEY_RULES = 'ruleConfig';
   private static readonly KEY_CONNECTION_STATUS = 'wsConnectionStatus';
   private static readonly KEY_CONNECTION_TIME = 'wsConnectionTime';
+  private static readonly KEY_AUTH_STATE = 'authState';
 
   /**
    * 从chrome.storage.local读取数据的Promise封装
@@ -204,6 +217,39 @@ export class StorageUtil {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName === 'local' && changes[this.KEY_RULES]) {
         callback(changes[this.KEY_RULES].newValue as RuleConfig);
+      }
+    });
+  }
+
+  /**
+   * 保存认证状态
+   */
+  static async saveAuthState(state: AuthState): Promise<void> {
+    await this.setToStorage({ [this.KEY_AUTH_STATE]: state });
+  }
+
+  /**
+   * 获取认证状态
+   */
+  static async getAuthState(): Promise<AuthState | null> {
+    const result = await this.getFromStorage<AuthState>(this.KEY_AUTH_STATE);
+    return result[this.KEY_AUTH_STATE] || null;
+  }
+
+  /**
+   * 清除认证状态
+   */
+  static async clearAuthState(): Promise<void> {
+    await this.setToStorage({ [this.KEY_AUTH_STATE]: null });
+  }
+
+  /**
+   * 监听认证状态变化
+   */
+  static onAuthStateChange(callback: (state: AuthState | null) => void): void {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes[this.KEY_AUTH_STATE]) {
+        callback(changes[this.KEY_AUTH_STATE].newValue as AuthState | null);
       }
     });
   }
