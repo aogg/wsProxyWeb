@@ -4,6 +4,7 @@
 .kilocode
 .iflow
 .idea
+/server.log
 
 /runtime
 
