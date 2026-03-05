@@ -558,25 +558,41 @@ export class WebSocketClient {
   }
 
   /**
-   * 推送加密密钥给服务端
+   * 推送配置给服务端（加密+压缩）
    */
   private async sendCryptoKeyToServer(): Promise<void> {
-    if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
-      try {
+    try {
+      const data: any = {};
+
+      // 加密配置
+      if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
         const cryptoConfig = (this.cryptoUtil as any).config;
-        const msg: Message = {
-          id: `crypto_key_${Date.now()}`,
-          type: 'update_crypto_key',
-          data: {
-            key: cryptoConfig.key,
-            algorithm: cryptoConfig.algorithm
-          }
+        data.crypto = {
+          enabled: true,
+          key: cryptoConfig.key,
+          algorithm: cryptoConfig.algorithm
         };
-        await this.send(msg);
-        console.log('加密密钥已推送给服务端');
-      } catch (error) {
-        console.error('推送加密密钥失败:', error);
       }
+
+      // 压缩配置
+      if (this.compressUtil) {
+        const compressConfig = (this.compressUtil as any).config;
+        data.compress = {
+          enabled: compressConfig.enabled,
+          algorithm: compressConfig.algorithm,
+          level: compressConfig.level
+        };
+      }
+
+      const msg: Message = {
+        id: `update_config_${Date.now()}`,
+        type: 'update_config',
+        data
+      };
+      await this.send(msg);
+      console.log('配置已推送给服务端:', data);
+    } catch (error) {
+      console.error('推送配置失败:', error);
     }
   }
 

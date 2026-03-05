@@ -321,6 +321,8 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 			response = s.handleAuth(conn, msg, ci)
 		case "update_crypto_key":
 			response = s.handleUpdateCryptoKey(conn, msg, ci)
+		case "update_config":
+			response = s.handleUpdateConfig(conn, msg, ci)
 		case "change_password":
 			response = s.handleChangePassword(msg, ci)
 		case "user_list":
@@ -549,7 +551,7 @@ func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, c
 	return response
 }
 
-// handleUpdateCryptoKey 处理更新加密密钥
+// handleUpdateCryptoKey 处理更新加密密钥（兼容旧版本）
 func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
 	response := types.Message{ID: msg.ID, Type: "update_crypto_key_result"}
 
@@ -586,6 +588,74 @@ func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types
 	Info("加密密钥已更新: algorithm=%s", algorithm)
 
 	response.Data = map[string]interface{}{"success": true, "message": "密钥更新成功"}
+	return response
+}
+
+// handleUpdateConfig 处理更新配置（加密+压缩）
+func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "update_config_result"}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	// 处理加密配置
+	if cryptoData, ok := data["crypto"].(map[string]interface{}); ok {
+		key, _ := cryptoData["key"].(string)
+		algorithm, _ := cryptoData["algorithm"].(string)
+		enabled, _ := cryptoData["enabled"].(bool)
+
+		if enabled && (key == "" || algorithm == "") {
+			response.Data = map[string]interface{"success": false, "message": "加密密钥或算法不能为空"}
+			return response
+		}
+
+		cryptoConfig := &CryptoConfig{
+			Enabled:   enabled,
+			Key:       key,
+			Algorithm: algorithm,
+		}
+
+		newCryptoLib, err := NewCryptoLib(cryptoConfig)
+		if err != nil {
+			Warn("更新加密配置失败: err=%v", err)
+			response.Data = map[string]interface{}{"success": false, "message": fmt.Sprintf("更新加密配置失败: %v", err)}
+			return response
+		}
+
+		s.cryptoLib = newCryptoLib
+		Info("加密配置已更新: enabled=%v, algorithm=%s", enabled, algorithm)
+	}
+
+	// 处理压缩配置
+	if compressData, ok := data["compress"].(map[string]interface{}); ok {
+		algorithm, _ := compressData["algorithm"].(string)
+		enabled, _ := compressData["enabled"].(bool)
+		level := 6
+		if lvl, ok := compressData["level"].(float64); ok {
+			level = int(lvl)
+		}
+
+		compressConfig := &CompressConfig{
+			Enabled:   enabled,
+			Algorithm: algorithm,
+			Level:     level,
+		}
+
+		newCompressLib, err := NewCompressLib(compressConfig)
+		if err != nil {
+			Warn("更新压缩配置失败: err=%v", err)
+			response.Data = map[string]interface{}{"success": false, "message": fmt.Sprintf("更新压缩配置失败: %v", err)}
+			return response
+		}
+
+		s.compressLib = newCompressLib
+		Info("压缩配置已更新: enabled=%v, algorithm=%s, level=%d", enabled, algorithm, level)
+	}
+
+	response.Data = map[string]interface{}{"success": true, "message": "配置更新成功"}
 	return response
 }
 
