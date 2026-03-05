@@ -1,10 +1,23 @@
 // 存储工具库
 import { DEFAULT_CONFIG } from '../configs/defaults';
 
+// 站点配置接口
+export interface SiteConfig {
+  id: string;
+  name: string;
+  websocketUrl: string;
+  auth?: {
+    username: string;
+    password: string;
+  };
+}
+
 // 客户端配置接口
 export interface ClientConfig {
   websocketUrl: string;
   proxyEnabled?: boolean; // 代理是否启用
+  currentSiteId?: string; // 当前选中的站点ID
+  sites?: SiteConfig[]; // 站点列表
   crypto?: {
     enabled: boolean;
     key: string;

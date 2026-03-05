@@ -4,6 +4,9 @@ import { StorageUtil, ClientConfig, RuleConfig, AuthState } from '../libs/storag
 import { DEFAULT_CONFIG } from '../configs/defaults';
 
 // 界面元素
+let siteSelect: HTMLSelectElement;
+let addSiteBtn: HTMLButtonElement;
+let deleteSiteBtn: HTMLButtonElement;
 let websocketUrlInput: HTMLInputElement;
 let cryptoEnabledCheckbox: HTMLInputElement;
 let cryptoKeyInput: HTMLInputElement;
@@ -44,6 +47,9 @@ let userManageToggle: HTMLButtonElement;
 // 初始化界面
 async function init(): Promise<void> {
   // 获取所有界面元素
+  siteSelect = document.getElementById('siteSelect') as HTMLSelectElement;
+  addSiteBtn = document.getElementById('addSiteBtn') as HTMLButtonElement;
+  deleteSiteBtn = document.getElementById('deleteSiteBtn') as HTMLButtonElement;
   websocketUrlInput = document.getElementById('websocketUrl') as HTMLInputElement;
   websocketUrlInput.placeholder = DEFAULT_CONFIG.websocketUrl;
   cryptoEnabledCheckbox = document.getElementById('cryptoEnabled') as HTMLInputElement;
@@ -109,20 +115,23 @@ async function init(): Promise<void> {
 async function loadConfig(): Promise<void> {
   try {
     const config = await StorageUtil.getConfig();
-    
+
+    // 加载站点列表
+    loadSiteList(config);
+
     // 填充表单
     websocketUrlInput.value = config.websocketUrl || DEFAULT_CONFIG.websocketUrl;
-    
+
     // 更新启动/停止按钮状态
     updateProxyButtonState(config.proxyEnabled || false);
-    
+
     if (config.crypto) {
       cryptoEnabledCheckbox.checked = config.crypto.enabled || false;
       cryptoKeyInput.value = config.crypto.key || '';
       cryptoAlgorithmSelect.value = config.crypto.algorithm || 'aes256gcm';
       toggleCryptoConfig();
     }
-    
+
     if (config.compress) {
       compressEnabledCheckbox.checked = config.compress.enabled || false;
       compressLevelInput.value = String(config.compress.level || 6);
@@ -189,6 +198,98 @@ async function updateConnectionStatus(): Promise<void> {
   }
 }
 
+// 加载站点列表
+function loadSiteList(config: ClientConfig): void {
+  const sites = config.sites || [];
+  const currentSiteId = config.currentSiteId || '';
+
+  siteSelect.innerHTML = '<option value="">自定义</option>';
+  sites.forEach(site => {
+    const option = document.createElement('option');
+    option.value = site.id;
+    option.textContent = site.name;
+    siteSelect.appendChild(option);
+  });
+
+  siteSelect.value = currentSiteId;
+  updateDeleteButtonState(currentSiteId);
+}
+
+// 更新删除按钮状态
+function updateDeleteButtonState(siteId: string): void {
+  deleteSiteBtn.style.display = siteId ? 'inline-block' : 'none';
+}
+
+// 站点切换
+async function handleSiteChange(): Promise<void> {
+  const siteId = siteSelect.value;
+  const config = await StorageUtil.getConfig();
+
+  if (siteId) {
+    const site = config.sites?.find(s => s.id === siteId);
+    if (site) {
+      websocketUrlInput.value = site.websocketUrl;
+      if (site.auth) {
+        authUsernameInput.value = site.auth.username;
+        authPasswordInput.value = site.auth.password;
+      }
+      await StorageUtil.saveConfig({ ...config, currentSiteId: siteId, websocketUrl: site.websocketUrl, auth: site.auth });
+    }
+  } else {
+    await StorageUtil.saveConfig({ ...config, currentSiteId: '' });
+  }
+
+  updateDeleteButtonState(siteId);
+}
+
+// 添加站点
+async function handleAddSite(): Promise<void> {
+  const name = prompt('请输入站点名称：');
+  if (!name) return;
+
+  const url = websocketUrlInput.value.trim();
+  if (!url) {
+    showMessage('请先填写WebSocket地址', 'error');
+    return;
+  }
+
+  const config = await StorageUtil.getConfig();
+  const sites = config.sites || [];
+  const id = Date.now().toString();
+
+  sites.push({
+    id,
+    name,
+    websocketUrl: url,
+    auth: {
+      username: authUsernameInput.value.trim(),
+      password: authPasswordInput.value.trim()
+    }
+  });
+
+  await StorageUtil.saveConfig({ ...config, sites, currentSiteId: id });
+  loadSiteList({ ...config, sites, currentSiteId: id });
+  showMessage('站点已添加', 'success');
+}
+
+// 删除站点
+async function handleDeleteSite(): Promise<void> {
+  const siteId = siteSelect.value;
+  if (!siteId) return;
+
+  if (!confirm('确定要删除此站点吗？')) return;
+
+  const config = await StorageUtil.getConfig();
+  const sites = (config.sites || []).filter(s => s.id !== siteId);
+
+  await StorageUtil.saveConfig({ ...config, sites, currentSiteId: '', websocketUrl: DEFAULT_CONFIG.websocketUrl });
+  websocketUrlInput.value = DEFAULT_CONFIG.websocketUrl;
+  authUsernameInput.value = '';
+  authPasswordInput.value = '';
+  loadSiteList({ ...config, sites, currentSiteId: '' });
+  showMessage('站点已删除', 'success');
+}
+
 // 更新状态显示
 function updateStatusDisplay(status: string, time: number): void {
   // 更新状态文本和颜色
@@ -218,6 +319,11 @@ function updateStatusDisplay(status: string, time: number): void {
 
 // 绑定事件
 function bindEvents(): void {
+  // 站点切换
+  siteSelect.addEventListener('change', handleSiteChange);
+  addSiteBtn.addEventListener('click', handleAddSite);
+  deleteSiteBtn.addEventListener('click', handleDeleteSite);
+
   // 保存配置
   saveConfigBtn.addEventListener('click', async () => {
     await saveConfig();
@@ -354,9 +460,14 @@ function toggleRulesConfig(): void {
 // 保存配置
 async function saveConfig(): Promise<void> {
   try {
+    const currentConfig = await StorageUtil.getConfig();
+    const siteId = siteSelect.value;
+
     // 收集配置
     const config: Partial<ClientConfig> = {
       websocketUrl: websocketUrlInput.value.trim(),
+      currentSiteId: siteId,
+      sites: currentConfig.sites,
       crypto: {
         enabled: cryptoEnabledCheckbox.checked,
         key: cryptoKeyInput.value.trim(),
@@ -369,9 +480,18 @@ async function saveConfig(): Promise<void> {
       },
       auth: {
         username: authUsernameInput.value.trim(),
-        password: authPasswordInput.value.trim() || (await StorageUtil.getConfig()).auth?.password || '',
+        password: authPasswordInput.value.trim() || currentConfig.auth?.password || '',
       }
     };
+
+    // 如果选中了站点，更新站点信息
+    if (siteId && config.sites && config.websocketUrl) {
+      const siteIndex = config.sites.findIndex(s => s.id === siteId);
+      if (siteIndex !== -1) {
+        config.sites[siteIndex].websocketUrl = config.websocketUrl;
+        config.sites[siteIndex].auth = config.auth;
+      }
+    }
 
     // 保存配置
     await StorageUtil.saveConfig(config);

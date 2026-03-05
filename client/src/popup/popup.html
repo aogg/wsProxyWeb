@@ -110,6 +110,14 @@
             <section class="config-section">
                 <h2>服务端连接</h2>
                 <div class="form-group">
+                    <label for="siteSelect">站点选择：</label>
+                    <select id="siteSelect" class="select-field">
+                        <option value="">自定义</option>
+                    </select>
+                    <button id="addSiteBtn" class="btn btn-secondary">添加站点</button>
+                    <button id="deleteSiteBtn" class="btn btn-danger" style="display: none;">删除站点</button>
+                </div>
+                <div class="form-group">
                     <label for="websocketUrl">WebSocket地址：</label>
                     <input
                         type="text"
