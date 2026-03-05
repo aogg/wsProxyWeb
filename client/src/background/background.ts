@@ -445,8 +445,22 @@ async function autoAuth(): Promise<void> {
 
 // 处理登录请求
 async function handleLogin(data: { username: string; password: string }): Promise<AuthResult> {
+  // 如果WebSocket未连接，先建立连接
   if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
-    return { success: false, isAdmin: false, username: data.username, message: 'WebSocket未连接' };
+    try {
+      await initWebSocket();
+      // 等待连接建立（最多5秒）
+      const maxWait = 5000;
+      const startTime = Date.now();
+      while ((!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) && Date.now() - startTime < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
+        return { success: false, isAdmin: false, username: data.username, message: '连接服务器失败' };
+      }
+    } catch (error) {
+      return { success: false, isAdmin: false, username: data.username, message: '连接服务器失败' };
+    }
   }
 
   const result = await wsClient.sendAuth(data.username, data.password);
