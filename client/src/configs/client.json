@@ -9,5 +9,10 @@
     "enabled": false,
     "level": 6,
     "algorithm": "gzip"
+  },
+  "proxyEnabled": false,
+  "auth": {
+    "username": "",
+    "password": ""
   }
 }

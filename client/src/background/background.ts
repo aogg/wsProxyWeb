@@ -5,6 +5,7 @@ import { CryptoConfig } from '../libs/crypto';
 import { CompressConfig } from '../libs/compress';
 import { StorageUtil, ClientConfig, RuleConfig, AuthState } from '../libs/storage';
 import { RuleLib } from '../libs/rule_lib';
+import { DEFAULT_CONFIG } from '../configs/defaults';
 
 // 初始化状态键名
 const INIT_KEY = 'ws_proxy_initialized';
@@ -77,24 +78,17 @@ async function initWebSocket(): Promise<void> {
     let config: ClientConfig;
     try {
       config = await StorageUtil.getConfig();
+      console.info('读取到的配置', config);
     } catch (error) {
       console.warn('从storage读取配置失败，使用默认配置:', error);
       config = {
-        websocketUrl: 'ws://localhost:8080/ws',
-        crypto: {
-          enabled: false,
-          key: '',
-          algorithm: 'aes256gcm'
-        },
-        compress: {
-          enabled: false,
-          level: 6,
-          algorithm: 'gzip'
-        }
+        ...DEFAULT_CONFIG,
+        crypto: DEFAULT_CONFIG.crypto,
+        compress: DEFAULT_CONFIG.compress
       };
     }
 
-    const wsUrl = config.websocketUrl || 'ws://localhost:8080/ws';
+    const wsUrl = config.websocketUrl || DEFAULT_CONFIG.websocketUrl;
 
     // 检查账号密码是否已配置
     if (!config.auth?.username || !config.auth?.password) {

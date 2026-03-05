@@ -1,6 +1,7 @@
 // 弹窗界面脚本
 
 import { StorageUtil, ClientConfig, RuleConfig, AuthState } from '../libs/storage';
+import { DEFAULT_CONFIG } from '../configs/defaults';
 
 // 界面元素
 let websocketUrlInput: HTMLInputElement;
@@ -42,6 +43,7 @@ let userManageToggle: HTMLButtonElement;
 async function init(): Promise<void> {
   // 获取所有界面元素
   websocketUrlInput = document.getElementById('websocketUrl') as HTMLInputElement;
+  websocketUrlInput.placeholder = DEFAULT_CONFIG.websocketUrl;
   cryptoEnabledCheckbox = document.getElementById('cryptoEnabled') as HTMLInputElement;
   cryptoKeyInput = document.getElementById('cryptoKey') as HTMLInputElement;
   cryptoAlgorithmSelect = document.getElementById('cryptoAlgorithm') as HTMLSelectElement;
@@ -102,7 +104,7 @@ async function loadConfig(): Promise<void> {
     const config = await StorageUtil.getConfig();
     
     // 填充表单
-    websocketUrlInput.value = config.websocketUrl || 'ws://localhost:8080/ws';
+    websocketUrlInput.value = config.websocketUrl || DEFAULT_CONFIG.websocketUrl;
     
     // 更新启动/停止按钮状态
     updateProxyButtonState(config.proxyEnabled || false);
@@ -385,14 +387,17 @@ async function connect(): Promise<void> {
       showMessage('请先填写账号密码', 'error');
       return;
     }
-    if (username && password) {
-      await StorageUtil.saveConfig({ ...config, auth: { username, password } });
-    }
+    // 自动保存配置（包括websocketUrl和账号密码）
+    await StorageUtil.saveConfig({
+      ...config,
+      websocketUrl: websocketUrlInput.value.trim(),
+      auth: { username: authUser, password: authPass }
+    });
 
     showMessage('正在启用连接...', 'info');
-    
+
     const response = await chrome.runtime.sendMessage({ type: 'connect' });
-    
+
     if (response && response.success) {
       connectBtn.style.display = 'none';
       disconnectBtn.style.display = 'block';
@@ -438,16 +443,19 @@ async function reconnect(): Promise<void> {
       showMessage('请先填写账号密码', 'error');
       return;
     }
-    if (username && password) {
-      await StorageUtil.saveConfig({ ...config, auth: { username, password } });
-    }
+    // 自动保存配置（包括websocketUrl和账号密码）
+    await StorageUtil.saveConfig({
+      ...config,
+      websocketUrl: websocketUrlInput.value.trim(),
+      auth: { username: authUser, password: authPass }
+    });
 
     showMessage('正在重新连接...', 'info');
-    
+
     // 先停止连接，再启用连接
     await chrome.runtime.sendMessage({ type: 'disconnect' });
     const response = await chrome.runtime.sendMessage({ type: 'connect' });
-    
+
     if (response && response.success) {
       connectBtn.style.display = 'none';
       disconnectBtn.style.display = 'block';
@@ -512,22 +520,11 @@ async function stopProxy(): Promise<void> {
 // 重置配置
 async function resetConfig(): Promise<void> {
   try {
+    // 先停止连接
+    await chrome.runtime.sendMessage({ type: 'disconnect' });
+
     // 重置为默认值
-    const defaultConfig: ClientConfig = {
-      websocketUrl: 'ws://localhost:8080/ws',
-      proxyEnabled: false,
-      crypto: {
-        enabled: false,
-        key: '',
-        algorithm: 'aes256gcm'
-      },
-      compress: {
-        enabled: false,
-        level: 6,
-        algorithm: 'gzip'
-      },
-      auth: undefined
-    };
+    const defaultConfig: ClientConfig = DEFAULT_CONFIG;
 
     const defaultRules: RuleConfig = {
       enabled: true,

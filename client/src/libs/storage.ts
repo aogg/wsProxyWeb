@@ -1,4 +1,5 @@
 // 存储工具库
+import { DEFAULT_CONFIG } from '../configs/defaults';
 
 // 客户端配置接口
 export interface ClientConfig {
@@ -116,20 +117,7 @@ export class StorageUtil {
         return stored;
       }
       // 默认配置
-      return {
-        websocketUrl: 'ws://localhost:8080/ws',
-        proxyEnabled: false,
-        crypto: {
-          enabled: false,
-          key: '',
-          algorithm: 'aes256gcm',
-        },
-        compress: {
-          enabled: false,
-          level: 6,
-          algorithm: 'gzip',
-        },
-      };
+      return DEFAULT_CONFIG;
     } catch (error) {
       console.error('读取配置失败:', error);
       throw error;
