@@ -20,6 +20,8 @@ import (
 type clientInfo struct {
 	authenticated bool
 	username      string
+	role          string
+	isSuperAdmin  bool
 	isAdmin       bool
 }
 
@@ -538,15 +540,19 @@ func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, c
 	s.clientsMu.Lock()
 	ci.authenticated = true
 	ci.username = session.Username
+	ci.role = session.Role
+	ci.isSuperAdmin = session.IsSuperAdmin
 	ci.isAdmin = session.IsAdmin
 	s.clientsMu.Unlock()
 
-	Info("用户认证成功: username=%s, isAdmin=%v", username, session.IsAdmin)
+	Info("用户认证成功: username=%s, role=%s", username, session.Role)
 	response.Data = map[string]interface{}{
-		"success":  true,
-		"isAdmin":  session.IsAdmin,
-		"username": session.Username,
-		"token":    session.Token,
+		"success":      true,
+		"isAdmin":      session.IsAdmin,
+		"isSuperAdmin": session.IsSuperAdmin,
+		"role":         session.Role,
+		"username":     session.Username,
+		"token":        session.Token,
 	}
 	return response
 }
@@ -709,9 +715,17 @@ func (s *WebSocketServer) handleUserCreate(msg *types.Message, ci *clientInfo) t
 
 	username, _ := data["username"].(string)
 	password, _ := data["password"].(string)
-	isAdmin, _ := data["isAdmin"].(bool)
+	role, _ := data["role"].(string)
+	enabled := true
+	if e, ok := data["enabled"].(bool); ok {
+		enabled = e
+	}
 
-	if err := s.authLogic.CreateUser(username, password, isAdmin); err != nil {
+	if role == "" {
+		role = "user"
+	}
+
+	if err := s.authLogic.CreateUser(username, password, role, enabled); err != nil {
 		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
 		return response
 	}
@@ -762,12 +776,16 @@ func (s *WebSocketServer) handleUserUpdate(msg *types.Message, ci *clientInfo) t
 
 	username, _ := data["username"].(string)
 	newPassword, _ := data["password"].(string)
-	var isAdmin *bool
-	if v, ok := data["isAdmin"].(bool); ok {
-		isAdmin = &v
+	var role *string
+	if v, ok := data["role"].(string); ok {
+		role = &v
+	}
+	var enabled *bool
+	if v, ok := data["enabled"].(bool); ok {
+		enabled = &v
 	}
 
-	if err := s.authLogic.UpdateUser(username, newPassword, isAdmin); err != nil {
+	if err := s.authLogic.UpdateUser(username, newPassword, role, enabled); err != nil {
 		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
 		return response
 	}

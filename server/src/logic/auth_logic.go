@@ -15,9 +15,10 @@ import (
 
 // User 用户结构
 type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"` // bcrypt hash
-	IsAdmin  bool   `json:"isAdmin"`
+	Username     string `json:"username"`
+	Password     string `json:"password"` // bcrypt hash
+	Role         string `json:"role"`     // "super_admin" | "admin" | "user"
+	Enabled      bool   `json:"enabled"`  // 是否启用（超级管理员始终启用）
 }
 
 // AuthLogic 认证逻辑
@@ -29,9 +30,11 @@ type AuthLogic struct {
 
 // AuthSession 认证会话
 type AuthSession struct {
-	Username string
-	IsAdmin  bool
-	Token    string
+	Username     string
+	Role         string
+	IsSuperAdmin bool
+	IsAdmin      bool
+	Token        string
 }
 
 var authInstance *AuthLogic
@@ -66,7 +69,8 @@ func (a *AuthLogic) InitAdmin(username, password string) error {
 	a.users[username] = &User{
 		Username: username,
 		Password: string(hash),
-		IsAdmin:  true,
+		Role:     "super_admin",
+		Enabled:  true,
 	}
 	return a.saveLocked()
 }
@@ -81,15 +85,24 @@ func (a *AuthLogic) Authenticate(username, password string) (*AuthSession, error
 		return nil, fmt.Errorf("用户名或密码错误")
 	}
 
+	if !user.Enabled && user.Role != "super_admin" {
+		return nil, fmt.Errorf("用户已被禁用")
+	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return nil, fmt.Errorf("用户名或密码错误")
 	}
 
 	token := generateToken()
+	isSuperAdmin := user.Role == "super_admin"
+	isAdmin := isSuperAdmin || user.Role == "admin"
+
 	return &AuthSession{
-		Username: username,
-		IsAdmin:  user.IsAdmin,
-		Token:    token,
+		Username:     username,
+		Role:         user.Role,
+		IsSuperAdmin: isSuperAdmin,
+		IsAdmin:      isAdmin,
+		Token:        token,
 	}, nil
 }
 
@@ -125,19 +138,24 @@ func (a *AuthLogic) ListUsers() []map[string]interface{} {
 	for _, u := range a.users {
 		result = append(result, map[string]interface{}{
 			"username": u.Username,
-			"isAdmin":  u.IsAdmin,
+			"role":     u.Role,
+			"enabled":  u.Enabled,
 		})
 	}
 	return result
 }
 
 // CreateUser 创建用户（管理员操作）
-func (a *AuthLogic) CreateUser(username, password string, isAdmin bool) error {
+func (a *AuthLogic) CreateUser(username, password, role string, enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if _, exists := a.users[username]; exists {
 		return fmt.Errorf("用户已存在")
+	}
+
+	if role != "admin" && role != "user" {
+		return fmt.Errorf("角色必须是 admin 或 user")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -148,7 +166,8 @@ func (a *AuthLogic) CreateUser(username, password string, isAdmin bool) error {
 	a.users[username] = &User{
 		Username: username,
 		Password: string(hash),
-		IsAdmin:  isAdmin,
+		Role:     role,
+		Enabled:  enabled,
 	}
 	return a.saveLocked()
 }
@@ -162,8 +181,13 @@ func (a *AuthLogic) DeleteUser(username, operatorUsername string) error {
 		return fmt.Errorf("不能删除自己")
 	}
 
-	if _, exists := a.users[username]; !exists {
+	user, exists := a.users[username]
+	if !exists {
 		return fmt.Errorf("用户不存在")
+	}
+
+	if user.Role == "super_admin" {
+		return fmt.Errorf("不能删除超级管理员")
 	}
 
 	delete(a.users, username)
@@ -171,13 +195,17 @@ func (a *AuthLogic) DeleteUser(username, operatorUsername string) error {
 }
 
 // UpdateUser 更新用户（管理员操作）
-func (a *AuthLogic) UpdateUser(username string, newPassword string, isAdmin *bool) error {
+func (a *AuthLogic) UpdateUser(username string, newPassword string, role *string, enabled *bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	user, exists := a.users[username]
 	if !exists {
 		return fmt.Errorf("用户不存在")
+	}
+
+	if user.Role == "super_admin" {
+		return fmt.Errorf("不能修改超级管理员")
 	}
 
 	if newPassword != "" {
@@ -188,8 +216,15 @@ func (a *AuthLogic) UpdateUser(username string, newPassword string, isAdmin *boo
 		user.Password = string(hash)
 	}
 
-	if isAdmin != nil {
-		user.IsAdmin = *isAdmin
+	if role != nil {
+		if *role != "admin" && *role != "user" {
+			return fmt.Errorf("角色必须是 admin 或 user")
+		}
+		user.Role = *role
+	}
+
+	if enabled != nil {
+		user.Enabled = *enabled
 	}
 
 	return a.saveLocked()

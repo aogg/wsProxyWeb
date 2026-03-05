@@ -730,15 +730,19 @@ async function loadUserList(): Promise<void> {
 }
 
 // 渲染用户表格
-function renderUserTable(users: Array<{ username: string; isAdmin: boolean }>): void {
+function renderUserTable(users: Array<{ username: string; role: string; enabled: boolean }>): void {
   const tbody = document.getElementById('userTableBody') as HTMLElement;
   tbody.innerHTML = '';
   for (const user of users) {
     const tr = document.createElement('tr');
+    const roleText = user.role === 'super_admin' ? '超级管理员' : user.role === 'admin' ? '管理员' : '普通用户';
+    const statusText = user.enabled ? '启用' : '禁用';
+    const canDelete = user.role !== 'super_admin';
     tr.innerHTML = `
       <td>${user.username}</td>
-      <td>${user.isAdmin ? '管理员' : '普通用户'}</td>
-      <td><button class="btn btn-danger btn-sm delete-user-btn" data-username="${user.username}">删除</button></td>
+      <td>${roleText}</td>
+      <td>${statusText}</td>
+      <td>${canDelete ? `<button class="btn btn-danger btn-sm delete-user-btn" data-username="${user.username}">删除</button>` : '-'}</td>
     `;
     tbody.appendChild(tr);
   }
@@ -757,7 +761,8 @@ function renderUserTable(users: Array<{ username: string; isAdmin: boolean }>): 
 async function handleAddUser(): Promise<void> {
   const username = (document.getElementById('newUsername') as HTMLInputElement).value.trim();
   const password = (document.getElementById('newUserPassword') as HTMLInputElement).value.trim();
-  const isAdmin = (document.getElementById('newUserIsAdmin') as HTMLInputElement).checked;
+  const role = (document.getElementById('newUserRole') as HTMLSelectElement).value;
+  const enabled = (document.getElementById('newUserEnabled') as HTMLInputElement).checked;
 
   if (!username || !password) {
     showMessage('请填写用户名和密码', 'error');
@@ -767,13 +772,14 @@ async function handleAddUser(): Promise<void> {
   try {
     const result = await chrome.runtime.sendMessage({
       type: 'wsMessage',
-      data: { type: 'user_create', data: { username, password, isAdmin } }
+      data: { type: 'user_create', data: { username, password, role, enabled } }
     });
     if (result.success) {
       showMessage('用户创建成功', 'success');
       (document.getElementById('newUsername') as HTMLInputElement).value = '';
       (document.getElementById('newUserPassword') as HTMLInputElement).value = '';
-      (document.getElementById('newUserIsAdmin') as HTMLInputElement).checked = false;
+      (document.getElementById('newUserRole') as HTMLSelectElement).value = 'user';
+      (document.getElementById('newUserEnabled') as HTMLInputElement).checked = true;
       loadUserList();
     } else {
       showMessage(result.message || '创建失败', 'error');
