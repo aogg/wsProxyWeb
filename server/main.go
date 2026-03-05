@@ -9,7 +9,10 @@ import (
 	"wsProxyWeb/server/src/libs"
 )
 
+const Version = "1.0.0"
+
 func main() {
+	libs.Info("WebSocket代理服务端 v%s", Version)
 	// 加载配置文件
 	config, err := libs.LoadConfig("")
 	if err != nil {
