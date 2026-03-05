@@ -27,6 +27,7 @@ let resetBtn: HTMLButtonElement;
 let statusDot: HTMLElement;
 let statusText: HTMLElement;
 let connectionTime: HTMLElement;
+let versionSpan: HTMLElement;
 
 // 认证相关元素
 let authUsernameInput: HTMLInputElement;
@@ -67,6 +68,7 @@ async function init(): Promise<void> {
   statusDot = document.getElementById('statusDot') as HTMLElement;
   statusText = document.getElementById('statusText') as HTMLElement;
   connectionTime = document.getElementById('connectionTime') as HTMLElement;
+  versionSpan = document.getElementById('version') as HTMLElement;
 
   // 认证相关元素
   authUsernameInput = document.getElementById('authUsername') as HTMLInputElement;
@@ -85,6 +87,9 @@ async function init(): Promise<void> {
   await loadRules();
   await updateConnectionStatus();
   await loadAuthState();
+
+  // 显示版本号
+  versionSpan.textContent = chrome.runtime.getManifest().version;
 
   // 绑定事件
   bindEvents();
