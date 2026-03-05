@@ -413,7 +413,6 @@ async function disconnectWebSocket(): Promise<void> {
     globalThis.__WS_INITIALIZED__ = false;
     updateConnectionStatus(ConnectionStatus.Disconnected);
   }
-  await StorageUtil.clearAuthState();
   console.log('WebSocket连接已停止');
 }
 
