@@ -1,4 +1,13 @@
+---
+description:
+alwaysApply: true
+enabled: true
+updatedAt: 2026-01-28T03:05:50.766Z
+provider:
+---
 
+# 注意
+- 默认配置只有放在一个地方，其他地方都必须引用这个地方的
 
 
 
