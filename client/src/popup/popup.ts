@@ -594,15 +594,24 @@ async function handleLogin(): Promise<void> {
     return;
   }
 
-  // 自动保存凭据到配置
-  const config = await StorageUtil.getConfig();
-  await StorageUtil.saveConfig({ ...config, auth: { username, password } });
-
   showMessage('登录中...', 'info');
   try {
     const result = await chrome.runtime.sendMessage({
       type: 'login',
-      data: { username, password }
+      data: {
+        websocketUrl: websocketUrlInput.value.trim(),
+        crypto: {
+          enabled: cryptoEnabledCheckbox.checked,
+          key: cryptoKeyInput.value.trim(),
+          algorithm: cryptoAlgorithmSelect.value
+        },
+        compress: {
+          enabled: compressEnabledCheckbox.checked,
+          level: parseInt(compressLevelInput.value),
+          algorithm: compressAlgorithmSelect.value
+        },
+        auth: { username, password }
+      }
     });
     if (result.success) {
       showMessage('登录成功', 'success');

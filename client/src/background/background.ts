@@ -437,10 +437,13 @@ async function autoAuth(): Promise<void> {
 }
 
 // 处理登录请求
-async function handleLogin(data: { username: string; password: string }): Promise<AuthResult> {
+async function handleLogin(data: Partial<ClientConfig>): Promise<AuthResult> {
   // 如果WebSocket未连接，先建立连接
   if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
     try {
+      // 先保存表单的完整配置，确保initWebSocket使用表单值
+      const config = await StorageUtil.getConfig();
+      await StorageUtil.saveConfig({ ...config, ...data });
       await initWebSocket();
       // 等待连接建立（最多5秒）
       const maxWait = 5000;
@@ -449,18 +452,18 @@ async function handleLogin(data: { username: string; password: string }): Promis
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
-        return { success: false, isAdmin: false, username: data.username, message: '连接服务器失败' };
+        return { success: false, isAdmin: false, username: data.auth?.username || '', message: '连接服务器失败' };
       }
     } catch (error) {
-      return { success: false, isAdmin: false, username: data.username, message: '连接服务器失败' };
+      return { success: false, isAdmin: false, username: data.auth?.username || '', message: '连接服务器失败' };
     }
   }
 
-  const result = await wsClient.sendAuth(data.username, data.password);
+  const result = await wsClient.sendAuth(data.auth!.username, data.auth!.password);
   if (result.success) {
-    // 保存账号到配置
+    // 保存完整配置
     const config = await StorageUtil.getConfig();
-    await StorageUtil.saveConfig({ ...config, auth: { username: data.username, password: data.password } });
+    await StorageUtil.saveConfig({ ...config, ...data });
     // 保存认证状态
     await StorageUtil.saveAuthState({
       authenticated: true,
