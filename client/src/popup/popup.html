@@ -123,12 +123,14 @@
                 </div>
                 <div class="form-group" id="cryptoConfigGroup" style="display: none;">
                     <label for="cryptoKey">加密密钥：</label>
-                    <input 
-                        type="text" 
-                        id="cryptoKey" 
+                    <input
+                        type="text"
+                        id="cryptoKey"
                         placeholder="32字节密钥（Base64）"
                         class="input-field"
+                        readonly
                     />
+                    <button id="regenerateKeyBtn" class="btn btn-secondary">重新生成密钥</button>
                     <label for="cryptoAlgorithm">加密算法：</label>
                     <select id="cryptoAlgorithm" class="select-field">
                         <option value="aes256gcm">AES-256-GCM</option>

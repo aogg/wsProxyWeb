@@ -14,10 +14,12 @@ export class CryptoUtil {
   private algorithm: string;
   private keyData: Uint8Array | null = null;
   private initPromise: Promise<void> | null = null;
+  public config: CryptoConfig;
 
   constructor(config: CryptoConfig) {
     this.enabled = config.enabled;
     this.algorithm = config.algorithm;
+    this.config = config;
     
     if (config.enabled) {
       // 启动异步初始化，但不等待

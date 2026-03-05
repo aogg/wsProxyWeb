@@ -130,6 +130,8 @@ export class WebSocketClient {
         this.reconnectDelay = 1000;
         this.startHeartbeat();
         this.startQueueProcessor();
+        // 如果启用加密，推送密钥给服务端
+        this.sendCryptoKeyToServer();
         // 处理队列中的待发送消息
         this.flushQueue();
       };
@@ -551,6 +553,29 @@ export class WebSocketClient {
       const item = this.requestQueue.shift();
       if (item) {
         item.reject(error);
+      }
+    }
+  }
+
+  /**
+   * 推送加密密钥给服务端
+   */
+  private async sendCryptoKeyToServer(): Promise<void> {
+    if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
+      try {
+        const cryptoConfig = (this.cryptoUtil as any).config;
+        const msg: Message = {
+          id: `crypto_key_${Date.now()}`,
+          type: 'update_crypto_key',
+          data: {
+            key: cryptoConfig.key,
+            algorithm: cryptoConfig.algorithm
+          }
+        };
+        await this.send(msg);
+        console.log('加密密钥已推送给服务端');
+      } catch (error) {
+        console.error('推送加密密钥失败:', error);
       }
     }
   }

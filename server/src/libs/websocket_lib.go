@@ -319,6 +319,8 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 		switch msg.Type {
 		case "auth":
 			response = s.handleAuth(conn, msg, ci)
+		case "update_crypto_key":
+			response = s.handleUpdateCryptoKey(conn, msg, ci)
 		case "change_password":
 			response = s.handleChangePassword(msg, ci)
 		case "user_list":
@@ -544,6 +546,46 @@ func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, c
 		"username": session.Username,
 		"token":    session.Token,
 	}
+	return response
+}
+
+// handleUpdateCryptoKey 处理更新加密密钥
+func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
+	response := types.Message{ID: msg.ID, Type: "update_crypto_key_result"}
+
+	data, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		response.Data = map[string]interface{}{"success": false, "message": "无效的数据"}
+		return response
+	}
+
+	key, _ := data["key"].(string)
+	algorithm, _ := data["algorithm"].(string)
+
+	if key == "" || algorithm == "" {
+		response.Data = map[string]interface{}{"success": false, "message": "密钥或算法不能为空"}
+		return response
+	}
+
+	// 创建新的加密库
+	cryptoConfig := &CryptoConfig{
+		Enabled:   true,
+		Key:       key,
+		Algorithm: algorithm,
+	}
+
+	newCryptoLib, err := NewCryptoLib(cryptoConfig)
+	if err != nil {
+		Warn("更新加密密钥失败: err=%v", err)
+		response.Data = map[string]interface{}{"success": false, "message": fmt.Sprintf("更新失败: %v", err)}
+		return response
+	}
+
+	// 更新服务器的加密库
+	s.cryptoLib = newCryptoLib
+	Info("加密密钥已更新: algorithm=%s", algorithm)
+
+	response.Data = map[string]interface{}{"success": true, "message": "密钥更新成功"}
 	return response
 }
 

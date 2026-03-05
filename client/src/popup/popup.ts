@@ -8,6 +8,7 @@ let websocketUrlInput: HTMLInputElement;
 let cryptoEnabledCheckbox: HTMLInputElement;
 let cryptoKeyInput: HTMLInputElement;
 let cryptoAlgorithmSelect: HTMLSelectElement;
+let regenerateKeyBtn: HTMLButtonElement;
 let compressEnabledCheckbox: HTMLInputElement;
 let compressLevelInput: HTMLInputElement;
 let compressLevelValue: HTMLElement;
@@ -47,6 +48,7 @@ async function init(): Promise<void> {
   cryptoEnabledCheckbox = document.getElementById('cryptoEnabled') as HTMLInputElement;
   cryptoKeyInput = document.getElementById('cryptoKey') as HTMLInputElement;
   cryptoAlgorithmSelect = document.getElementById('cryptoAlgorithm') as HTMLSelectElement;
+  regenerateKeyBtn = document.getElementById('regenerateKeyBtn') as HTMLButtonElement;
   compressEnabledCheckbox = document.getElementById('compressEnabled') as HTMLInputElement;
   compressLevelInput = document.getElementById('compressLevel') as HTMLInputElement;
   compressLevelValue = document.getElementById('compressLevelValue') as HTMLElement;
@@ -262,6 +264,9 @@ function bindEvents(): void {
     compressLevelValue.textContent = compressLevelInput.value;
   });
 
+  // 重新生成密钥
+  regenerateKeyBtn.addEventListener('click', generateCryptoKey);
+
   // 登录
   loginBtn.addEventListener('click', handleLogin);
 
@@ -303,9 +308,22 @@ function toggleCryptoConfig(): void {
   const cryptoConfigGroup = document.getElementById('cryptoConfigGroup') as HTMLElement;
   if (cryptoEnabledCheckbox.checked) {
     cryptoConfigGroup.style.display = 'block';
+    // 如果没有密钥，自动生成
+    if (!cryptoKeyInput.value) {
+      generateCryptoKey();
+    }
   } else {
     cryptoConfigGroup.style.display = 'none';
   }
+}
+
+// 生成随机加密密钥
+function generateCryptoKey(): void {
+  const keyBytes = new Uint8Array(32);
+  crypto.getRandomValues(keyBytes);
+  const keyBase64 = btoa(String.fromCharCode(...keyBytes));
+  cryptoKeyInput.value = keyBase64;
+  showMessage('密钥已生成', 'success');
 }
 
 // 切换压缩配置显示
@@ -387,11 +405,22 @@ async function connect(): Promise<void> {
       showMessage('请先填写账号密码', 'error');
       return;
     }
+
+    // 如果启用加密，生成新密钥
+    if (cryptoEnabledCheckbox.checked) {
+      generateCryptoKey();
+    }
+
     // 自动保存配置（包括websocketUrl和账号密码）
     await StorageUtil.saveConfig({
       ...config,
       websocketUrl: websocketUrlInput.value.trim(),
-      auth: { username: authUser, password: authPass }
+      auth: { username: authUser, password: authPass },
+      crypto: {
+        enabled: cryptoEnabledCheckbox.checked,
+        key: cryptoKeyInput.value.trim(),
+        algorithm: cryptoAlgorithmSelect.value
+      }
     });
 
     showMessage('正在启用连接...', 'info');
@@ -443,11 +472,22 @@ async function reconnect(): Promise<void> {
       showMessage('请先填写账号密码', 'error');
       return;
     }
+
+    // 如果启用加密，生成新密钥
+    if (cryptoEnabledCheckbox.checked) {
+      generateCryptoKey();
+    }
+
     // 自动保存配置（包括websocketUrl和账号密码）
     await StorageUtil.saveConfig({
       ...config,
       websocketUrl: websocketUrlInput.value.trim(),
-      auth: { username: authUser, password: authPass }
+      auth: { username: authUser, password: authPass },
+      crypto: {
+        enabled: cryptoEnabledCheckbox.checked,
+        key: cryptoKeyInput.value.trim(),
+        algorithm: cryptoAlgorithmSelect.value
+      }
     });
 
     showMessage('正在重新连接...', 'info');
