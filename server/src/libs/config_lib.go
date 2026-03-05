@@ -65,12 +65,14 @@ type SecurityConfig struct {
 
 // HTTPConfig HTTP客户端配置（用于服务端转发请求）
 type HTTPConfig struct {
-	TimeoutSeconds               int `mapstructure:"timeoutSeconds"`               // 请求总超时秒数
-	MaxIdleConns                 int `mapstructure:"maxIdleConns"`                 // 全局最大空闲连接
-	MaxIdleConnsPerHost          int `mapstructure:"maxIdleConnsPerHost"`          // 单host最大空闲连接
-	IdleConnTimeoutSeconds       int `mapstructure:"idleConnTimeoutSeconds"`       // 空闲连接超时秒数
-	TLSHandshakeTimeoutSeconds   int `mapstructure:"tlsHandshakeTimeoutSeconds"`   // TLS握手超时秒数
-	ExpectContinueTimeoutSeconds int `mapstructure:"expectContinueTimeoutSeconds"` // Expect: 100-continue 超时秒数
+	TimeoutSeconds               int    `mapstructure:"timeoutSeconds"`               // 请求总超时秒数
+	MaxIdleConns                 int    `mapstructure:"maxIdleConns"`                 // 全局最大空闲连接
+	MaxIdleConnsPerHost          int    `mapstructure:"maxIdleConnsPerHost"`          // 单host最大空闲连接
+	IdleConnTimeoutSeconds       int    `mapstructure:"idleConnTimeoutSeconds"`       // 空闲连接超时秒数
+	TLSHandshakeTimeoutSeconds   int    `mapstructure:"tlsHandshakeTimeoutSeconds"`   // TLS握手超时秒数
+	ExpectContinueTimeoutSeconds int    `mapstructure:"expectContinueTimeoutSeconds"` // Expect: 100-continue 超时秒数
+	ProxyEnabled                 bool   `mapstructure:"proxyEnabled"`                 // 是否启用正向代理
+	ProxyURL                     string `mapstructure:"proxyURL"`                     // 正向代理地址
 }
 
 var globalConfig *ServerConfig
@@ -185,6 +187,8 @@ func setDefaultConfig() {
 	viper.SetDefault("http.idleConnTimeoutSeconds", 90)
 	viper.SetDefault("http.tlsHandshakeTimeoutSeconds", 10)
 	viper.SetDefault("http.expectContinueTimeoutSeconds", 1)
+	viper.SetDefault("http.proxyEnabled", false)
+	viper.SetDefault("http.proxyURL", "")
 
 	// 性能优化默认配置
 	viper.SetDefault("performance.workerPoolSize", 0) // 默认不使用worker池

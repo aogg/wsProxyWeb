@@ -54,6 +54,8 @@ http:
   idleConnTimeoutSeconds: 90 # 空闲连接超时秒数
   tlsHandshakeTimeoutSeconds: 10 # TLS握手超时秒数
   expectContinueTimeoutSeconds: 1 # Expect: 100-continue 超时秒数
+  proxyEnabled: false # 是否启用正向代理
+  proxyURL: "" # 正向代理地址（如：http://proxy.example.com:8080 或 socks5://proxy.example.com:1080）
 
 # 性能优化配置
 performance:

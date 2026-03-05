@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -33,8 +34,23 @@ func getHTTPClient() *http.Client {
 			timeout = 30 * time.Second
 		}
 
+		// 配置代理
+		var proxyFunc func(*http.Request) (*url.URL, error)
+		if cfg.HTTP.ProxyEnabled && cfg.HTTP.ProxyURL != "" {
+			proxyURL, err := url.Parse(cfg.HTTP.ProxyURL)
+			if err != nil {
+				Warn("解析代理URL失败: %v，使用环境变量代理", err)
+				proxyFunc = http.ProxyFromEnvironment
+			} else {
+				proxyFunc = http.ProxyURL(proxyURL)
+				Info("HTTP客户端使用正向代理: %s", cfg.HTTP.ProxyURL)
+			}
+		} else {
+			proxyFunc = http.ProxyFromEnvironment
+		}
+
 		transport := &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
+			Proxy: proxyFunc,
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
 				KeepAlive: 30 * time.Second,
