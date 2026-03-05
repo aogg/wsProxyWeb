@@ -1,0 +1,17 @@
+# 运行时文件
+runtime/
+*.log
+*.exe
+
+# 开发文件
+.git
+.gitignore
+.idea
+.vscode
+
+# 测试文件
+*_test.go
+src/tests/
+
+# 文档
+*.md

@@ -102,6 +102,10 @@ func LoadConfig(configPath string) (*ServerConfig, error) {
 	// 设置默认值
 	setDefaultConfig()
 
+	// 启用环境变量支持
+	viper.SetEnvPrefix("WS_PROXY")
+	viper.AutomaticEnv()
+
 	// 读取配置文件
 	if err := viper.ReadInConfig(); err != nil {
 		Warn("读取配置文件失败: %v，使用默认配置", err)
