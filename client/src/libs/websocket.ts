@@ -191,6 +191,14 @@ export class WebSocketClient {
         this.stopHeartbeat();
         this.setStatus(ConnectionStatus.Disconnected);
 
+        // 如果是认证失败（关闭码1008），不进行重连
+        if (event.code === 1008) {
+          console.error('认证失败，停止重连');
+          this.shouldReconnect = false;
+          this.setStatus(ConnectionStatus.Error);
+          return;
+        }
+
         // 如果不是主动关闭，则尝试重连
         if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect();

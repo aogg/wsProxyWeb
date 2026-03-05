@@ -533,7 +533,10 @@ func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, c
 	if err != nil {
 		Warn("认证失败: username=%s, err=%v", username, err)
 		response.Data = map[string]interface{}{"success": false, "message": err.Error()}
-		return response
+		// 发送失败响应后关闭连接
+		s.sendMessage(context.Background(), conn, response)
+		conn.Close(websocket.StatusPolicyViolation, "认证失败")
+		return types.Message{} // 返回空消息，避免重复发送
 	}
 
 	// 更新客户端认证状态
