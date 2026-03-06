@@ -16,13 +16,15 @@ import (
 	"wsProxyWeb/server/src/types"
 )
 
-// clientInfo 客户端连接信息（含认证状态）
+// clientInfo 客户端连接信息（含认证状态和加密配置）
 type clientInfo struct {
 	authenticated bool
 	username      string
 	role          string
 	isSuperAdmin  bool
 	isAdmin       bool
+	cryptoLib     *CryptoLib   // 每个连接独立的加密库
+	compressLib   *CompressLib // 每个连接独立的压缩库
 }
 
 // WebSocketServer WebSocket服务器结构
@@ -204,7 +206,14 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 func (s *WebSocketServer) addClient(conn *websocket.Conn) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
-	s.clients[conn] = &clientInfo{}
+	// 每个连接初始化时，加密和压缩都是禁用状态
+	cryptoLib, _ := NewCryptoLib(&CryptoConfig{Enabled: false})
+	compressLib, _ := NewCompressLib(&CompressConfig{Enabled: false})
+	s.clients[conn] = &clientInfo{
+		cryptoLib:   cryptoLib,
+		compressLib: compressLib,
+	}
+	Info("新连接初始化: 加密=禁用, 压缩=禁用")
 }
 
 // removeClient 移除客户端
@@ -277,7 +286,7 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 		Debug("开始处理消息, 数据长度=%d", len(rawData))
 		fmt.Printf("[DEBUG] 收到原始消息, 长度=%d\n", len(rawData))
 		// 解密 → 解压 → 解析JSON
-		msg, err := s.processIncomingMessage(rawData)
+		msg, err := s.processIncomingMessage(conn, rawData)
 		if err != nil {
 			Error("处理接收消息失败: %v", err)
 			// 发送错误响应
@@ -430,26 +439,31 @@ func getClientIP(r *http.Request) string {
 }
 
 // processIncomingMessage 处理接收到的消息：解密 → 解压 → 解析JSON
-func (s *WebSocketServer) processIncomingMessage(rawData []byte) (*types.Message, error) {
+func (s *WebSocketServer) processIncomingMessage(conn *websocket.Conn, rawData []byte) (*types.Message, error) {
+	ci := s.getClientInfo(conn)
+	if ci == nil {
+		return nil, fmt.Errorf("客户端信息不存在")
+	}
+
 	// 先尝试直接解析JSON（检测是否为明文配置消息）
 	var msg types.Message
 	if err := json.Unmarshal(rawData, &msg); err == nil {
-		// 解析成功，检查是否为配置消息
-		if msg.Type == "update_config" {
-			// 配置消息，直接返回（不解密）
+		// 解析成功，检查是否为配置消息或认证消息
+		if msg.Type == "update_config" || msg.Type == "auth" {
+			Info("收到明文消息: type=%s", msg.Type)
 			return &msg, nil
 		}
 	}
 
-	// 不是配置消息，按正常流程处理：解密 → 解压 → 解析JSON
-	// 步骤1: 解密
-	decryptedData, err := s.cryptoLib.Decrypt(rawData)
+	// 不是配置/认证消息，按正常流程处理：解密 → 解压 → 解析JSON
+	// 步骤1: 解密（使用连接专属的加密库）
+	decryptedData, err := ci.cryptoLib.Decrypt(rawData)
 	if err != nil {
 		return nil, fmt.Errorf("解密失败: %v", err)
 	}
 
-	// 步骤2: 解压
-	decompressedData, err := s.compressLib.Decompress(decryptedData)
+	// 步骤2: 解压（使用连接专属的压缩库）
+	decompressedData, err := ci.compressLib.Decompress(decryptedData)
 	if err != nil {
 		return nil, fmt.Errorf("解压失败: %v", err)
 	}
@@ -464,20 +478,25 @@ func (s *WebSocketServer) processIncomingMessage(rawData []byte) (*types.Message
 
 // sendMessage 发送消息：序列化JSON → 压缩 → 加密 → 发送
 func (s *WebSocketServer) sendMessage(ctx context.Context, conn *websocket.Conn, msg types.Message) error {
+	ci := s.getClientInfo(conn)
+	if ci == nil {
+		return fmt.Errorf("客户端信息不存在")
+	}
+
 	// 步骤1: 序列化JSON
 	jsonData, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("序列化JSON失败: %v", err)
 	}
 
-	// 步骤2: 压缩
-	compressedData, err := s.compressLib.Compress(jsonData)
+	// 步骤2: 压缩（使用连接专属的压缩库）
+	compressedData, err := ci.compressLib.Compress(jsonData)
 	if err != nil {
 		return fmt.Errorf("压缩失败: %v", err)
 	}
 
-	// 步骤3: 加密
-	encryptedData, err := s.cryptoLib.Encrypt(compressedData)
+	// 步骤3: 加密（使用连接专属的加密库）
+	encryptedData, err := ci.cryptoLib.Encrypt(compressedData)
 	if err != nil {
 		return fmt.Errorf("加密失败: %v", err)
 	}
@@ -604,9 +623,11 @@ func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types
 		return response
 	}
 
-	// 更新服务器的加密库
-	s.cryptoLib = newCryptoLib
-	Info("加密密钥已更新: algorithm=%s", algorithm)
+	// 更新当前连接的加密库（不影响其他连接）
+	s.clientsMu.Lock()
+	ci.cryptoLib = newCryptoLib
+	s.clientsMu.Unlock()
+	Info("连接加密密钥已更新: algorithm=%s", algorithm)
 
 	response.Data = map[string]interface{}{"success": true, "message": "密钥更新成功"}
 	return response
@@ -646,8 +667,11 @@ func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Me
 			return response
 		}
 
-		s.cryptoLib = newCryptoLib
-		Info("加密配置已更新: enabled=%v, algorithm=%s", enabled, algorithm)
+		// 更新当前连接的加密库（不影响其他连接）
+		s.clientsMu.Lock()
+		ci.cryptoLib = newCryptoLib
+		s.clientsMu.Unlock()
+		Info("连接加密配置已更新: enabled=%v, algorithm=%s", enabled, algorithm)
 	}
 
 	// 处理压缩配置
@@ -672,8 +696,11 @@ func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Me
 			return response
 		}
 
-		s.compressLib = newCompressLib
-		Info("压缩配置已更新: enabled=%v, algorithm=%s, level=%d", enabled, algorithm, level)
+		// 更新当前连接的压缩库（不影响其他连接）
+		s.clientsMu.Lock()
+		ci.compressLib = newCompressLib
+		s.clientsMu.Unlock()
+		Info("连接压缩配置已更新: enabled=%v, algorithm=%s, level=%d", enabled, algorithm, level)
 	}
 
 	response.Data = map[string]interface{}{"success": true, "message": "配置更新成功"}

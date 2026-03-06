@@ -133,7 +133,11 @@ export class WebSocketClient {
         this.reconnectDelay = 1000;
         this.startHeartbeat();
         this.startQueueProcessor();
-        // 注意：不立即发送加密配置，等待登录成功后再发送
+
+        // 重置配置同步状态（每次连接都需要重新同步）
+        this.configSynced = false;
+        console.log('[WS] 连接建立，配置同步状态已重置');
+
         // 如果没有启用加密和压缩，直接标记为已同步
         if ((!this.cryptoUtil || !this.cryptoUtil.isEnabled()) &&
             (!this.compressUtil || !this.compressUtil.isEnabled())) {
