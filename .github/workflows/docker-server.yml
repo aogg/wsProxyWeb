@@ -1,0 +1,32 @@
+name: Docker Server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/docker-server.yml"
+      - "!**.md"
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    name: 构建和推送Docker镜像
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: 构建并推送镜像
+        uses: docker/build-push-action@v5
+        with:
+          tags: ${{ secrets.DOCKER_USERNAME }}/wsproxyweb-server:latest
+          context: ./server
+          file: ./server/Dockerfile
+          pull: true
+          push: true
+          labels: true
