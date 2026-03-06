@@ -567,6 +567,14 @@ async function saveConfig(): Promise<void> {
     chrome.runtime.sendMessage({ type: 'reloadConfig' }).catch(err => {
       console.error('通知background失败:', err);
     });
+
+    // 如果当前已连接，则重新连接以应用新配置
+    const statusInfo = await StorageUtil.getConnectionStatus();
+    if (statusInfo && statusInfo.status === 'connected') {
+      showMessage('正在重新连接...', 'info');
+      await chrome.runtime.sendMessage({ type: 'disconnect' });
+      await chrome.runtime.sendMessage({ type: 'connect' });
+    }
   } catch (error) {
     console.error('保存配置失败:', error);
     showMessage('保存配置失败', 'error');
