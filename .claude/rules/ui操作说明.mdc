@@ -1,0 +1,11 @@
+---
+description:
+alwaysApply: true
+enabled: true
+updatedAt: 2026-01-28T03:05:50.766Z
+provider:
+---
+
+
+# 说明
+- 当修改客户端的表单时，保存配置要表现出被修改的状态
