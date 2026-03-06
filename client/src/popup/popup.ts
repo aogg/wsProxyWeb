@@ -32,6 +32,9 @@ let statusText: HTMLElement;
 let connectionTime: HTMLElement;
 let versionSpan: HTMLElement;
 
+// 表单修改状态
+let isFormModified = false;
+
 // 认证相关元素
 let authUsernameInput: HTMLInputElement;
 let authPasswordInput: HTMLInputElement;
@@ -99,6 +102,9 @@ async function init(): Promise<void> {
 
   // 绑定事件
   bindEvents();
+
+  // 监听表单变化
+  bindFormChangeListeners();
 
   // 监听状态变化
   StorageUtil.onStatusChange((status, time) => {
@@ -328,6 +334,44 @@ function updateStatusDisplay(status: string, time: number): void {
   }
 }
 
+// 标记表单已修改
+function markFormModified(): void {
+  if (!isFormModified) {
+    isFormModified = true;
+    saveConfigBtn.textContent = '保存配置 *';
+    saveConfigBtn.style.backgroundColor = '#ff9800';
+  }
+}
+
+// 标记表单未修改
+function markFormUnmodified(): void {
+  isFormModified = false;
+  saveConfigBtn.textContent = '保存配置';
+  saveConfigBtn.style.backgroundColor = '';
+}
+
+// 监听表单变化
+function bindFormChangeListeners(): void {
+  const formInputs = [
+    websocketUrlInput,
+    cryptoEnabledCheckbox,
+    cryptoKeyInput,
+    cryptoAlgorithmSelect,
+    compressEnabledCheckbox,
+    compressLevelInput,
+    compressAlgorithmSelect,
+    rulesEnabledCheckbox,
+    whitelistTextarea,
+    blacklistTextarea,
+    urlPatternsTextarea
+  ];
+
+  formInputs.forEach(input => {
+    input.addEventListener('input', markFormModified);
+    input.addEventListener('change', markFormModified);
+  });
+}
+
 // 绑定事件
 function bindEvents(): void {
   // 站点切换
@@ -517,6 +561,7 @@ async function saveConfig(): Promise<void> {
     await StorageUtil.saveRules(rules);
 
     showMessage('配置已保存', 'success');
+    markFormUnmodified();
 
     // 通知background重新初始化
     chrome.runtime.sendMessage({ type: 'reloadConfig' }).catch(err => {
