@@ -401,11 +401,6 @@ async function connectWebSocket(): Promise<void> {
 async function disconnectWebSocket(): Promise<void> {
   console.log('停止WebSocket连接...');
 
-  // 停止代理
-  proxyEnabled = false;
-  const config = await StorageUtil.getConfig();
-  await StorageUtil.saveConfig({ ...config, proxyEnabled: false });
-
   // 清除认证状态
   await StorageUtil.clearAuthState();
 
@@ -417,7 +412,7 @@ async function disconnectWebSocket(): Promise<void> {
     globalThis.__WS_INITIALIZED__ = false;
     updateConnectionStatus(ConnectionStatus.Disconnected);
   }
-  console.log('WebSocket连接已停止，代理已停止，已退出登录');
+  console.log('WebSocket连接已停止，已退出登录');
 }
 
 // 自动认证（连接成功后使用存储的账号密码）

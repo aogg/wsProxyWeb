@@ -308,6 +308,17 @@ function updateStatusDisplay(status: string, time: number): void {
   // 更新连接按钮状态（已连接时显示停止连接按钮）
   updateConnectButtonState(status === 'connected');
 
+  // 根据连接状态禁用/启用启动代理按钮
+  const isConnected = status === 'connected';
+  startBtn.disabled = !isConnected;
+  if (!isConnected) {
+    startBtn.style.opacity = '0.5';
+    startBtn.style.cursor = 'not-allowed';
+  } else {
+    startBtn.style.opacity = '1';
+    startBtn.style.cursor = 'pointer';
+  }
+
   // 更新连接时间
   if (time > 0) {
     const date = new Date(time);
@@ -569,12 +580,17 @@ async function connect(): Promise<void> {
 async function disconnect(): Promise<void> {
   try {
     showMessage('正在停止连接...', 'info');
-    
+
     const response = await chrome.runtime.sendMessage({ type: 'disconnect' });
-    
+
     if (response && response.success) {
       connectBtn.style.display = 'block';
       disconnectBtn.style.display = 'none';
+
+      // 重新加载配置以更新代理按钮状态
+      const config = await StorageUtil.getConfig();
+      updateProxyButtonState(config.proxyEnabled || false);
+
       showMessage('连接已停止', 'success');
     } else {
       showMessage(response?.error || '停止连接失败', 'error');
@@ -792,6 +808,11 @@ async function handleLogin(): Promise<void> {
 async function handleLogout(): Promise<void> {
   await chrome.runtime.sendMessage({ type: 'logout' });
   updateAuthDisplay(null);
+
+  // 重新加载配置以更新代理按钮状态
+  const config = await StorageUtil.getConfig();
+  updateProxyButtonState(config.proxyEnabled || false);
+
   showMessage('已退出登录', 'success');
 }
 
