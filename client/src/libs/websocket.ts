@@ -81,6 +81,9 @@ export class WebSocketClient {
   private authUsername: string = '';
   private authIsAdmin: boolean = false;
 
+  // 配置同步状态
+  private configSynced: boolean = false;
+
   constructor(url: string, cryptoConfig?: CryptoConfig, compressConfig?: CompressConfig) {
     this.url = url;
     
@@ -130,24 +133,23 @@ export class WebSocketClient {
         this.reconnectDelay = 1000;
         this.startHeartbeat();
         this.startQueueProcessor();
-        // 如果启用加密，推送密钥给服务端
+        // 如果启用加密，推送密钥给服务端（明文发送）
         this.sendCryptoKeyToServer();
-        // 处理队列中的待发送消息
-        this.flushQueue();
+        // 注意：不立即刷新队列，等待配置确认后再发送
       };
 
       this.ws.onmessage = async (event) => {
         try {
           // 处理接收到的消息：解密 → 解压 → 解析JSON
           let messageData: Message;
-          
+
           if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
             // 二进制数据，需要解密和解压
-            const arrayBuffer = event.data instanceof Blob 
-              ? await event.data.arrayBuffer() 
+            const arrayBuffer = event.data instanceof Blob
+              ? await event.data.arrayBuffer()
               : event.data;
             const uint8Array = new Uint8Array(arrayBuffer);
-            
+
             // 解密 → 解压 → 解析JSON
             const decryptedData = await this.processIncomingMessage(uint8Array);
             messageData = JSON.parse(new TextDecoder().decode(decryptedData));
@@ -155,7 +157,16 @@ export class WebSocketClient {
             // 文本数据，直接解析JSON（兼容未启用加密压缩的情况）
             messageData = JSON.parse(event.data);
           }
-          
+
+          // 处理配置确认消息
+          if (messageData.type === 'config_result') {
+            console.log('收到配置确认:', messageData.data);
+            this.configSynced = true;
+            // 配置同步完成，刷新队列
+            this.flushQueue();
+            return;
+          }
+
           // 处理心跳响应
           if (messageData.type === 'pong' || messageData.type === 'heartbeat') {
             return;
@@ -224,6 +235,9 @@ export class WebSocketClient {
     this.stopHeartbeat();
     this.stopQueueProcessor();
     this.clearReconnectTimer();
+
+    // 重置配置同步状态
+    this.configSynced = false;
 
     // 拒绝所有待处理的请求
     this.rejectAllPending(new Error('连接已断开'));
@@ -566,10 +580,18 @@ export class WebSocketClient {
   }
 
   /**
-   * 推送配置给服务端（加密+压缩）
+   * 推送配置给服务端（明文发送，不加密）
    */
   private async sendCryptoKeyToServer(): Promise<void> {
     try {
+      // 如果没有启用加密和压缩，直接标记为已同步
+      if ((!this.cryptoUtil || !this.cryptoUtil.isEnabled()) &&
+          (!this.compressUtil || !this.compressUtil.isEnabled())) {
+        this.configSynced = true;
+        this.flushQueue();
+        return;
+      }
+
       const data: any = {};
 
       // 加密配置
@@ -597,10 +619,18 @@ export class WebSocketClient {
         type: 'update_config',
         data
       };
-      await this.send(msg);
-      console.log('配置已推送给服务端:', data);
+
+      // 直接发送明文JSON（不加密、不压缩）
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const jsonString = JSON.stringify(msg);
+        this.ws.send(jsonString);
+        console.log('配置已推送给服务端（明文）:', data);
+      }
     } catch (error) {
       console.error('推送配置失败:', error);
+      // 失败时也标记为已同步，避免阻塞
+      this.configSynced = true;
+      this.flushQueue();
     }
   }
 

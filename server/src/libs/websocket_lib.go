@@ -300,8 +300,8 @@ func (s *WebSocketServer) handleMessages(conn *websocket.Conn, clientIP string) 
 		// 获取客户端认证信息
 		ci := s.getClientInfo(conn)
 
-		// 认证检查：未认证时只允许auth消息
-		if s.authEnabled && !ci.authenticated && msg.Type != "auth" {
+		// 认证检查：未认证时只允许auth和update_config消息
+		if s.authEnabled && !ci.authenticated && msg.Type != "auth" && msg.Type != "update_config" {
 			response := types.Message{
 				ID:   msg.ID,
 				Type: "error",
@@ -431,6 +431,17 @@ func getClientIP(r *http.Request) string {
 
 // processIncomingMessage 处理接收到的消息：解密 → 解压 → 解析JSON
 func (s *WebSocketServer) processIncomingMessage(rawData []byte) (*types.Message, error) {
+	// 先尝试直接解析JSON（检测是否为明文配置消息）
+	var msg types.Message
+	if err := json.Unmarshal(rawData, &msg); err == nil {
+		// 解析成功，检查是否为配置消息
+		if msg.Type == "update_config" {
+			// 配置消息，直接返回（不解密）
+			return &msg, nil
+		}
+	}
+
+	// 不是配置消息，按正常流程处理：解密 → 解压 → 解析JSON
 	// 步骤1: 解密
 	decryptedData, err := s.cryptoLib.Decrypt(rawData)
 	if err != nil {
@@ -444,7 +455,6 @@ func (s *WebSocketServer) processIncomingMessage(rawData []byte) (*types.Message
 	}
 
 	// 步骤3: 解析JSON
-	var msg types.Message
 	if err := json.Unmarshal(decompressedData, &msg); err != nil {
 		return nil, fmt.Errorf("解析JSON失败: %v", err)
 	}
@@ -604,7 +614,7 @@ func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types
 
 // handleUpdateConfig 处理更新配置（加密+压缩）
 func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
-	response := types.Message{ID: msg.ID, Type: "update_config_result"}
+	response := types.Message{ID: msg.ID, Type: "config_result"}
 
 	data, ok := msg.Data.(map[string]interface{})
 	if !ok {
