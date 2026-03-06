@@ -23,11 +23,32 @@
             <button id="connectBtn" class="btn btn-primary">启用连接</button>
             <button id="disconnectBtn" class="btn btn-secondary" style="display: none;">停止连接</button>
             <button id="reconnectBtn" class="btn btn-secondary">重新连接</button>
-            <button id="saveConfigBtn" class="btn btn-primary">保存配置</button>
             <button id="resetBtn" class="btn btn-danger">重置配置</button>
         </section>
 
         <main class="main-content">
+            <!-- 服务端连接配置 -->
+            <section class="config-section">
+                <h2>服务端连接</h2>
+                <div class="form-group">
+                    <label for="siteSelect">站点选择：</label>
+                    <select id="siteSelect" class="select-field">
+                        <option value="">自定义</option>
+                    </select>
+                    <button id="addSiteBtn" class="btn btn-secondary">添加站点</button>
+                    <button id="saveConfigBtn" class="btn btn-primary">保存配置</button>
+                    <button id="deleteSiteBtn" class="btn btn-danger" style="display: none;">删除站点</button>
+                </div>
+                <div class="form-group">
+                    <label for="websocketUrl">WebSocket地址：</label>
+                    <input
+                        type="text"
+                        id="websocketUrl"
+                        class="input-field"
+                    />
+                </div>
+            </section>
+
             <!-- 登录认证 -->
             <section class="config-section" id="authSection">
                 <h2>账号认证</h2>
@@ -105,26 +126,6 @@
                 </div>
                 <button id="addUserBtn" class="btn btn-primary">添加用户</button>
                 <button id="userManageClose" class="btn btn-secondary">关闭</button>
-            </section>
-            <!-- 服务端连接配置 -->
-            <section class="config-section">
-                <h2>服务端连接</h2>
-                <div class="form-group">
-                    <label for="siteSelect">站点选择：</label>
-                    <select id="siteSelect" class="select-field">
-                        <option value="">自定义</option>
-                    </select>
-                    <button id="addSiteBtn" class="btn btn-secondary">添加站点</button>
-                    <button id="deleteSiteBtn" class="btn btn-danger" style="display: none;">删除站点</button>
-                </div>
-                <div class="form-group">
-                    <label for="websocketUrl">WebSocket地址：</label>
-                    <input
-                        type="text"
-                        id="websocketUrl"
-                        class="input-field"
-                    />
-                </div>
             </section>
 
             <!-- 加密配置 -->
