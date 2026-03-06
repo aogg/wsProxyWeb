@@ -244,13 +244,17 @@ export class WebSocketClient {
    * 断开连接
    */
   public disconnect(): void {
+    console.log('[WS] 断开连接，重置状态');
     this.shouldReconnect = false;
     this.stopHeartbeat();
     this.stopQueueProcessor();
     this.clearReconnectTimer();
 
-    // 重置配置同步状态
+    // 重置配置同步状态和认证状态
     this.configSynced = false;
+    this.authenticated = false;
+    this.authUsername = '';
+    this.authIsAdmin = false;
 
     // 拒绝所有待处理的请求
     this.rejectAllPending(new Error('连接已断开'));
@@ -680,6 +684,13 @@ export class WebSocketClient {
    */
   public async sendAuth(username: string, password: string): Promise<AuthResult> {
     console.log('[AUTH] 开始登录验证（明文）:', username);
+
+    // 重新登录时，重置配置同步状态，确保登录流程使用明文
+    if (this.authenticated || this.configSynced) {
+      console.log('[AUTH] 重置配置同步状态，准备重新登录');
+      this.configSynced = false;
+      this.authenticated = false;
+    }
 
     const msg: Message = {
       id: `auth_${Date.now()}`,
