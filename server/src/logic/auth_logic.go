@@ -15,17 +15,18 @@ import (
 
 // User 用户结构
 type User struct {
-	Username     string `json:"username"`
-	Password     string `json:"password"` // bcrypt hash
-	Role         string `json:"role"`     // "super_admin" | "admin" | "user"
-	Enabled      bool   `json:"enabled"`  // 是否启用（超级管理员始终启用）
+	Username string `json:"username"`
+	Password string `json:"password"` // bcrypt hash
+	Role     string `json:"role"`     // "super_admin" | "admin" | "user"
+	Enabled  bool   `json:"enabled"`  // 是否启用（超级管理员始终启用）
 }
 
 // AuthLogic 认证逻辑
 type AuthLogic struct {
-	mu       sync.RWMutex
-	users    map[string]*User
-	filePath string
+	mu            sync.RWMutex
+	users         map[string]*User
+	filePath      string
+	configAdminUN string // server.yaml中配置的管理员用户名
 }
 
 // AuthSession 认证会话
@@ -41,11 +42,12 @@ var authInstance *AuthLogic
 var authOnce sync.Once
 
 // GetAuthLogic 获取认证逻辑单例
-func GetAuthLogic(dataDir string) *AuthLogic {
+func GetAuthLogic(dataDir string, configAdminUsername string) *AuthLogic {
 	authOnce.Do(func() {
 		authInstance = &AuthLogic{
-			users:    make(map[string]*User),
-			filePath: filepath.Join(dataDir, "users.json"),
+			users:         make(map[string]*User),
+			filePath:      filepath.Join(dataDir, "users.json"),
+			configAdminUN: configAdminUsername,
 		}
 		authInstance.load()
 	})
@@ -85,7 +87,11 @@ func (a *AuthLogic) Authenticate(username, password string) (*AuthSession, error
 		return nil, fmt.Errorf("用户名或密码错误")
 	}
 
-	if !user.Enabled && user.Role != "super_admin" {
+	// server.yaml中配置的管理员账号自动拥有super_admin权限
+	isConfigAdmin := username == a.configAdminUN
+	isSuperAdmin := user.Role == "super_admin" || isConfigAdmin
+
+	if !user.Enabled && !isSuperAdmin {
 		return nil, fmt.Errorf("用户已被禁用")
 	}
 
@@ -94,12 +100,15 @@ func (a *AuthLogic) Authenticate(username, password string) (*AuthSession, error
 	}
 
 	token := generateToken()
-	isSuperAdmin := user.Role == "super_admin"
+	role := user.Role
+	if isConfigAdmin {
+		role = "super_admin"
+	}
 	isAdmin := isSuperAdmin || user.Role == "admin"
 
 	return &AuthSession{
 		Username:     username,
-		Role:         user.Role,
+		Role:         role,
 		IsSuperAdmin: isSuperAdmin,
 		IsAdmin:      isAdmin,
 		Token:        token,

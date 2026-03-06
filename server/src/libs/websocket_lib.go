@@ -99,7 +99,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 	var authLogic *logic.AuthLogic
 	authEnabled := config.Auth.Enabled
 	if authEnabled {
-		authLogic = logic.GetAuthLogic(config.Auth.UserDataDir)
+		authLogic = logic.GetAuthLogic(config.Auth.UserDataDir, config.Auth.AdminUsername)
 		if err := authLogic.InitAdmin(config.Auth.AdminUsername, config.Auth.AdminPassword); err != nil {
 			Warn("初始化管理员账号失败: %v", err)
 		}
