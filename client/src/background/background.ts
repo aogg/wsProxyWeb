@@ -426,7 +426,7 @@ async function autoAuth(): Promise<void> {
   try {
     const config = await StorageUtil.getConfig();
     if (config.auth?.username && config.auth?.password) {
-      console.log('自动认证中...');
+      console.log('[BG] 开始自动认证，用户名:', config.auth.username);
       const result = await wsClient.sendAuth(config.auth.username, config.auth.password);
       if (result.success) {
         await StorageUtil.saveAuthState({
@@ -435,22 +435,27 @@ async function autoAuth(): Promise<void> {
           isAdmin: result.isAdmin,
           token: result.token || '',
         });
-        console.log('自动认证成功:', result.username);
+        console.log('[BG] 自动认证成功:', result.username, '管理员:', result.isAdmin);
       } else {
         await StorageUtil.clearAuthState();
-        console.warn('自动认证失败:', result.message);
+        console.warn('[BG] 自动认证失败:', result.message);
       }
+    } else {
+      console.log('[BG] 未配置账号密码，跳过自动认证');
     }
   } catch (error) {
-    console.error('自动认证异常:', error);
+    console.error('[BG] 自动认证异常:', error);
   }
 }
 
 // 处理登录请求
 async function handleLogin(data: Partial<ClientConfig>): Promise<AuthResult> {
+  console.log('[BG] 处理登录请求，用户名:', data.auth?.username);
+
   // 如果WebSocket未连接，先建立连接
   if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
     try {
+      console.log('[BG] WebSocket未连接，先建立连接');
       // 先保存表单的完整配置，确保initWebSocket使用表单值
       const config = await StorageUtil.getConfig();
       await StorageUtil.saveConfig({ ...config, ...data });
@@ -462,15 +467,21 @@ async function handleLogin(data: Partial<ClientConfig>): Promise<AuthResult> {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
       if (!wsClient || wsClient.getStatus() !== ConnectionStatus.Connected) {
+        console.error('[BG] 连接服务器超时');
         return { success: false, isAdmin: false, username: data.auth?.username || '', message: '连接服务器失败' };
       }
+      console.log('[BG] WebSocket连接成功');
     } catch (error) {
+      console.error('[BG] 连接服务器失败:', error);
       return { success: false, isAdmin: false, username: data.auth?.username || '', message: '连接服务器失败' };
     }
   }
 
+  console.log('[BG] 发送登录请求');
   const result = await wsClient.sendAuth(data.auth!.username, data.auth!.password);
+
   if (result.success) {
+    console.log('[BG] 登录成功，保存配置和认证状态');
     // 保存完整配置
     const config = await StorageUtil.getConfig();
     await StorageUtil.saveConfig({ ...config, ...data });
@@ -481,7 +492,10 @@ async function handleLogin(data: Partial<ClientConfig>): Promise<AuthResult> {
       isAdmin: result.isAdmin,
       token: result.token || '',
     });
+  } else {
+    console.error('[BG] 登录失败:', result.message);
   }
+
   return result;
 }
 

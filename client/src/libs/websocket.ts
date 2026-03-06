@@ -127,15 +127,20 @@ export class WebSocketClient {
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
-        console.log('WebSocket连接成功');
+        console.log('[WS] WebSocket连接成功');
         this.setStatus(ConnectionStatus.Connected);
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.startHeartbeat();
         this.startQueueProcessor();
-        // 如果启用加密，推送密钥给服务端（明文发送）
-        this.sendCryptoKeyToServer();
-        // 注意：不立即刷新队列，等待配置确认后再发送
+        // 注意：不立即发送加密配置，等待登录成功后再发送
+        // 如果没有启用加密和压缩，直接标记为已同步
+        if ((!this.cryptoUtil || !this.cryptoUtil.isEnabled()) &&
+            (!this.compressUtil || !this.compressUtil.isEnabled())) {
+          console.log('[WS] 未启用加密和压缩，标记为已同步');
+          this.configSynced = true;
+          this.flushQueue();
+        }
       };
 
       this.ws.onmessage = async (event) => {
@@ -145,23 +150,31 @@ export class WebSocketClient {
 
           if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
             // 二进制数据，需要解密和解压
+            console.log('[RECV] 收到二进制消息');
             const arrayBuffer = event.data instanceof Blob
               ? await event.data.arrayBuffer()
               : event.data;
             const uint8Array = new Uint8Array(arrayBuffer);
+            console.log('[RECV] 二进制数据大小:', uint8Array.length);
 
             // 解密 → 解压 → 解析JSON
             const decryptedData = await this.processIncomingMessage(uint8Array);
-            messageData = JSON.parse(new TextDecoder().decode(decryptedData));
+            const jsonString = new TextDecoder().decode(decryptedData);
+            console.log('[RECV] 解析JSON:', jsonString.substring(0, 100));
+            messageData = JSON.parse(jsonString);
           } else {
             // 文本数据，直接解析JSON（兼容未启用加密压缩的情况）
+            console.log('[RECV] 收到文本消息:', event.data.substring(0, 100));
             messageData = JSON.parse(event.data);
           }
 
+          console.log('[RECV] 消息类型:', messageData.type);
+
           // 处理配置确认消息
           if (messageData.type === 'config_result') {
-            console.log('收到配置确认:', messageData.data);
+            console.log('[CONFIG] 收到配置确认:', messageData.data);
             this.configSynced = true;
+            console.log('[CONFIG] 配置同步完成，开始刷新队列');
             // 配置同步完成，刷新队列
             this.flushQueue();
             return;
@@ -177,11 +190,11 @@ export class WebSocketClient {
             try {
               callback(messageData);
             } catch (error) {
-              console.error('消息回调执行错误:', error);
+              console.error('[RECV] 消息回调执行错误:', error);
             }
           });
         } catch (error) {
-          console.error('解析消息失败:', error, event.data);
+          console.error('[RECV] 解析消息失败:', error, event.data);
         }
       };
 
@@ -296,18 +309,23 @@ export class WebSocketClient {
     }
 
     try {
+      console.log('[SEND] 准备发送消息，类型:', message.type, 'ID:', message.id);
+
       // 序列化JSON → 压缩 → 加密 → 发送二进制数据
       const jsonString = JSON.stringify(message);
       const jsonBytes = new TextEncoder().encode(jsonString);
-      
+      console.log('[SEND] JSON大小:', jsonBytes.length);
+
       // 处理发送消息：压缩 → 加密 → 发送
       const processedData = await this.processOutgoingMessage(jsonBytes);
-      
+      console.log('[SEND] 处理后数据大小:', processedData.length);
+
       // 发送二进制数据
       this.ws.send(processedData);
+      console.log('[SEND] 消息已发送');
       resolve(true);
     } catch (error) {
-      console.error('发送消息失败:', error);
+      console.error('[SEND] 发送消息失败:', error);
       reject(error as Error);
     }
   }
@@ -318,29 +336,37 @@ export class WebSocketClient {
    */
   private async processOutgoingMessage(data: Uint8Array): Promise<Uint8Array> {
     let processedData: Uint8Array = data;
-    
+
+    // 只有在配置同步后才进行压缩和加密
+    if (!this.configSynced) {
+      console.log('[SEND] 配置未同步，发送明文消息');
+      return processedData;
+    }
+
     // 步骤1: 压缩
     if (this.compressUtil && this.compressUtil.isEnabled()) {
       try {
+        console.log('[SEND] 压缩消息，原始大小:', processedData.length);
         processedData = await this.compressUtil.compress(processedData);
+        console.log('[SEND] 压缩后大小:', processedData.length);
       } catch (error) {
-        console.error('压缩失败:', error);
+        console.error('[SEND] 压缩失败:', error);
         throw error;
       }
     }
-    
+
     // 步骤2: 加密
     if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
       try {
+        console.log('[SEND] 加密消息，压缩后大小:', processedData.length);
         processedData = await this.cryptoUtil.encrypt(processedData);
+        console.log('[SEND] 加密后大小:', processedData.length);
       } catch (error) {
-        console.error('加密失败:', error);
+        console.error('[SEND] 加密失败:', error);
         throw error;
       }
     }
-    
-    // 始终返回二进制数据，确保与服务器协议一致
-    // 服务器期望接收二进制格式的 WebSocket 消息
+
     return processedData;
   }
 
@@ -349,27 +375,37 @@ export class WebSocketClient {
    */
   private async processIncomingMessage(data: Uint8Array): Promise<Uint8Array> {
     let processedData: Uint8Array = data;
-    
+
+    // 只有在配置同步后才进行解密和解压
+    if (!this.configSynced) {
+      console.log('[RECV] 配置未同步，接收明文消息');
+      return processedData;
+    }
+
     // 步骤1: 解密
     if (this.cryptoUtil && this.cryptoUtil.isEnabled()) {
       try {
+        console.log('[RECV] 解密消息，加密数据大小:', processedData.length);
         processedData = await this.cryptoUtil.decrypt(processedData);
+        console.log('[RECV] 解密后大小:', processedData.length);
       } catch (error) {
-        console.error('解密失败:', error);
+        console.error('[RECV] 解密失败:', error);
         throw error;
       }
     }
-    
+
     // 步骤2: 解压
     if (this.compressUtil && this.compressUtil.isEnabled()) {
       try {
+        console.log('[RECV] 解压消息，压缩数据大小:', processedData.length);
         processedData = await this.compressUtil.decompress(processedData);
+        console.log('[RECV] 解压后大小:', processedData.length);
       } catch (error) {
-        console.error('解压失败:', error);
+        console.error('[RECV] 解压失败:', error);
         throw error;
       }
     }
-    
+
     return processedData;
   }
 
@@ -584,9 +620,12 @@ export class WebSocketClient {
    */
   private async sendCryptoKeyToServer(): Promise<void> {
     try {
+      console.log('[CONFIG] 准备发送加密配置到服务端');
+
       // 如果没有启用加密和压缩，直接标记为已同步
       if ((!this.cryptoUtil || !this.cryptoUtil.isEnabled()) &&
           (!this.compressUtil || !this.compressUtil.isEnabled())) {
+        console.log('[CONFIG] 未启用加密和压缩，跳过配置同步');
         this.configSynced = true;
         this.flushQueue();
         return;
@@ -602,6 +641,7 @@ export class WebSocketClient {
           key: cryptoConfig.key,
           algorithm: cryptoConfig.algorithm
         };
+        console.log('[CONFIG] 加密配置:', { enabled: true, algorithm: cryptoConfig.algorithm });
       }
 
       // 压缩配置
@@ -612,6 +652,7 @@ export class WebSocketClient {
           algorithm: compressConfig.algorithm,
           level: compressConfig.level
         };
+        console.log('[CONFIG] 压缩配置:', data.compress);
       }
 
       const msg: Message = {
@@ -624,10 +665,10 @@ export class WebSocketClient {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         const jsonString = JSON.stringify(msg);
         this.ws.send(jsonString);
-        console.log('配置已推送给服务端（明文）:', data);
+        console.log('[CONFIG] 配置已推送给服务端（明文）');
       }
     } catch (error) {
-      console.error('推送配置失败:', error);
+      console.error('[CONFIG] 推送配置失败:', error);
       // 失败时也标记为已同步，避免阻塞
       this.configSynced = true;
       this.flushQueue();
@@ -638,6 +679,8 @@ export class WebSocketClient {
    * 发送认证请求
    */
   public async sendAuth(username: string, password: string): Promise<AuthResult> {
+    console.log('[AUTH] 开始登录验证（明文）:', username);
+
     const msg: Message = {
       id: `auth_${Date.now()}`,
       type: 'auth',
@@ -650,11 +693,19 @@ export class WebSocketClient {
         if (message.type === 'auth_result') {
           this.offMessage(handler);
           const data = message.data || {};
+
+          console.log('[AUTH] 收到登录响应:', data.success ? '成功' : '失败', data.message);
+
           if (data.success) {
             this.authenticated = true;
             this.authUsername = data.username || username;
             this.authIsAdmin = data.isAdmin || false;
+
+            // 登录成功后，发送加密配置
+            console.log('[AUTH] 登录成功，准备发送加密配置');
+            this.sendCryptoKeyToServer();
           }
+
           resolve({
             success: data.success,
             isAdmin: data.isAdmin || false,
@@ -667,6 +718,7 @@ export class WebSocketClient {
       this.onMessage(handler);
       this.send(msg).catch(() => {
         this.offMessage(handler);
+        console.error('[AUTH] 发送登录请求失败');
         resolve({ success: false, isAdmin: false, username, message: '发送认证请求失败' });
       });
     });
