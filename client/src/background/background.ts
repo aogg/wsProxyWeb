@@ -126,7 +126,7 @@ async function initWebSocket(): Promise<void> {
     wsClient.onStatusChange((status: ConnectionStatus) => {
       console.log('WebSocket连接状态:', status);
 
-      // 连接成功时标记已初始化并自动认证
+      // 连接成功时标记已初始化
       if (status === ConnectionStatus.Connected) {
         globalThis.__WS_INITIALIZED__ = true;
         autoAuth();
@@ -435,7 +435,7 @@ async function autoAuth(): Promise<void> {
           isAdmin: result.isAdmin,
           token: result.token || '',
         });
-        console.log('[BG] 自动认证成功:', result.username, '管理员:', result.isAdmin);
+        console.log('[BG] 根据服务端返回，判断自动认证成功:', result.username, '管理员:', result.isAdmin);
       } else {
         await StorageUtil.clearAuthState();
         console.warn('[BG] 自动认证失败:', result.message);

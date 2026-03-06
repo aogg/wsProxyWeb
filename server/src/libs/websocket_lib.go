@@ -11,9 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"nhooyr.io/websocket"
 	"wsProxyWeb/server/src/logic"
 	"wsProxyWeb/server/src/types"
+
+	"nhooyr.io/websocket"
 )
 
 // clientInfo 客户端连接信息（含认证状态和加密配置）
@@ -489,6 +490,12 @@ func (s *WebSocketServer) sendMessage(ctx context.Context, conn *websocket.Conn,
 		return fmt.Errorf("序列化JSON失败: %v", err)
 	}
 
+	// 如果消息标记为跳过加密，直接发送明文
+	if msg.SkipEncryption {
+		Info("发送明文消息: type=%s", msg.Type)
+		return conn.Write(ctx, websocket.MessageBinary, jsonData)
+	}
+
 	// 步骤2: 压缩（使用连接专属的压缩库）
 	compressedData, err := ci.compressLib.Compress(jsonData)
 	if err != nil {
@@ -549,7 +556,7 @@ func truncateBody(body string) string {
 
 // handleAuth 处理认证消息
 func (s *WebSocketServer) handleAuth(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
-	response := types.Message{ID: msg.ID, Type: "auth_result"}
+	response := types.Message{ID: msg.ID, Type: "auth_result", SkipEncryption: true}
 
 	data, ok := msg.Data.(map[string]interface{})
 	if !ok {
@@ -635,7 +642,7 @@ func (s *WebSocketServer) handleUpdateCryptoKey(conn *websocket.Conn, msg *types
 
 // handleUpdateConfig 处理更新配置（加密+压缩）
 func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Message, ci *clientInfo) types.Message {
-	response := types.Message{ID: msg.ID, Type: "config_result"}
+	response := types.Message{ID: msg.ID, Type: "config_result", SkipEncryption: true}
 
 	data, ok := msg.Data.(map[string]interface{})
 	if !ok {
