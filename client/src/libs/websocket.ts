@@ -649,8 +649,8 @@ export class WebSocketClient {
       }
 
       // 压缩配置
-      if (this.compressUtil) {
-        const compressConfig = (this.compressUtil as any).config;
+      if (this.compressUtil && this.compressUtil.isEnabled()) {
+        const compressConfig = (this.compressUtil as any);
         data.compress = {
           enabled: compressConfig.enabled,
           algorithm: compressConfig.algorithm,
