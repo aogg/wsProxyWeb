@@ -168,8 +168,9 @@ func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request
 	// 升级HTTP连接为WebSocket连接
 	fmt.Printf("[DEBUG] 开始Accept\n")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns:  []string{"*"},                 // 允许所有来源，生产环境应该限制
-		CompressionMode: websocket.CompressionDisabled, // 禁用压缩，避免 RSV bits 错误
+		OriginPatterns:     []string{"*"},                 // 允许所有来源，生产环境应该限制
+		CompressionMode:    websocket.CompressionDisabled, // 禁用压缩，避免 RSV bits 错误
+		InsecureSkipVerify: true,                          // 允许HTTP/1.0连接（用于代理场景）
 	})
 	if err != nil {
 		Error("WebSocket连接失败: %v", err)
