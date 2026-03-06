@@ -780,7 +780,6 @@ async function handleLogin(): Promise<void> {
     });
     if (result.success) {
       showMessage('登录成功', 'success');
-      authPasswordInput.value = '';
     } else {
       showMessage(result.message || '登录失败', 'error');
     }
