@@ -617,7 +617,7 @@ func (s *WebSocketServer) handleUpdateConfig(conn *websocket.Conn, msg *types.Me
 		enabled, _ := cryptoData["enabled"].(bool)
 
 		if enabled && (key == "" || algorithm == "") {
-			response.Data = map[string]interface{"success": false, "message": "加密密钥或算法不能为空"}
+			response.Data = map[string]interface{}{"success": false, "message": "加密密钥或算法不能为空"}
 			return response
 		}
 
