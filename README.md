@@ -41,6 +41,22 @@ cd server && go mod download && cd ..
 
 ### 启动服务端
 
+**方式一：使用 Docker（推荐）**
+
+```bash
+# 拉取镜像
+docker pull adockero/wsproxyweb-server:latest
+
+# 运行容器
+docker run -d \
+  --name wsproxy-server \
+  -p 8080:8080 \
+  -v $(pwd)/server/src/configs:/app/src/configs \
+  adockero/wsproxyweb-server:latest
+```
+
+**方式二：本地运行**
+
 ```bash
 # Windows (默认端口 8080)
 .\bin\start-server.bat
@@ -154,4 +170,4 @@ MIT License
 
 ## 版本
 
-当前版本: v1.1.2
+当前版本: v1.1.4
