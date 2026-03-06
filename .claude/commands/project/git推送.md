@@ -15,6 +15,8 @@ allowed-tools: Read, Write, Bash, WebFetch
 - server/main.go:12
 
 ## 然后推送git，并且给git打标签
+- 打额tag会应用到github releases，所以也要维护好github releases的说明
+- 需要符合.github/workflows/里的标签要求
 
 
 
