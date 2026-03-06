@@ -9,6 +9,7 @@ services:
       - "8080:8080"
     environment:
       # 服务器配置
+      WS_PROXY_SERVER_HOST: "0.0.0.0"
       WS_PROXY_SERVER_PORT: "8080"
 
       # 日志配置

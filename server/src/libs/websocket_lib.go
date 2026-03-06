@@ -27,6 +27,7 @@ type clientInfo struct {
 
 // WebSocketServer WebSocket服务器结构
 type WebSocketServer struct {
+	host           string
 	port           string
 	clients        map[*websocket.Conn]*clientInfo
 	clientsMu      sync.RWMutex
@@ -109,6 +110,7 @@ func NewWebSocketServer(port string) *WebSocketServer {
 	}
 
 	return &WebSocketServer{
+		host:           config.Server.Host,
 		port:           port,
 		clients:        make(map[*websocket.Conn]*clientInfo),
 		ctx:            ctx,
@@ -126,9 +128,9 @@ func NewWebSocketServer(port string) *WebSocketServer {
 func (s *WebSocketServer) Start() error {
 	http.HandleFunc("/ws", s.handleWebSocket)
 
-	addr := ":" + s.port
-	Info("WebSocket服务器启动，监听端口: %s", addr)
-	Info("WebSocket连接地址: ws://localhost%s/ws", addr)
+	addr := s.host + ":" + s.port
+	Info("WebSocket服务器启动，监听地址: %s", addr)
+	Info("WebSocket连接地址: ws://%s/ws", addr)
 
 	return http.ListenAndServe(addr, nil)
 }

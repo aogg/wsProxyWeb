@@ -30,6 +30,7 @@ type AuthConfig struct {
 
 // ServerConfigServer 服务器配置
 type ServerConfigServer struct {
+	Host string `mapstructure:"host"`
 	Port string `mapstructure:"port"`
 }
 
