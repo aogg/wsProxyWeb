@@ -165,12 +165,18 @@ func (s *WebSocketServer) HandleWebSocket(w http.ResponseWriter, r *http.Request
 // handleWebSocket 处理WebSocket连接
 func (s *WebSocketServer) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[DEBUG] handleWebSocket 开始处理连接\n")
+
+	// 强制升级HTTP/1.0到HTTP/1.1（用于代理场景）
+	if r.ProtoMajor == 1 && r.ProtoMinor == 0 {
+		r.ProtoMinor = 1
+		r.Proto = "HTTP/1.1"
+	}
+
 	// 升级HTTP连接为WebSocket连接
 	fmt.Printf("[DEBUG] 开始Accept\n")
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns:     []string{"*"},                 // 允许所有来源，生产环境应该限制
-		CompressionMode:    websocket.CompressionDisabled, // 禁用压缩，避免 RSV bits 错误
-		InsecureSkipVerify: true,                          // 允许HTTP/1.0连接（用于代理场景）
+		OriginPatterns:  []string{"*"},                 // 允许所有来源，生产环境应该限制
+		CompressionMode: websocket.CompressionDisabled, // 禁用压缩，避免 RSV bits 错误
 	})
 	if err != nil {
 		Error("WebSocket连接失败: %v", err)

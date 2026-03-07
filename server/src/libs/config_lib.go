@@ -4,6 +4,7 @@ package libs
 import (
 	"fmt"
 	"path/filepath"
+	"wsProxyWeb/server/src/logic"
 
 	"github.com/spf13/viper"
 )
@@ -101,11 +102,14 @@ func LoadConfig(configPath string) (*ServerConfig, error) {
 	viper.SetConfigType("yaml")
 
 	// 设置默认值
-	setDefaultConfig()
+	logic.SetDefaultConfig()
 
 	// 启用环境变量支持
 	viper.SetEnvPrefix("WS_PROXY")
 	viper.AutomaticEnv()
+
+	// 绑定环境变量到配置键（viper需要显式绑定嵌套键）
+	logic.BindEnvVars()
 
 	// 读取配置文件
 	if err := viper.ReadInConfig(); err != nil {
@@ -141,68 +145,6 @@ func GetConfig() *ServerConfig {
 		}
 	}
 	return globalConfig
-}
-
-// setDefaultConfig 设置默认配置值
-func setDefaultConfig() {
-	// 服务器默认配置
-	viper.SetDefault("server.port", "8080")
-
-	// 日志默认配置
-	viper.SetDefault("log.enabled", true)
-	viper.SetDefault("log.level", "info")
-	viper.SetDefault("log.logDir", "runtime/server/logs")
-	viper.SetDefault("log.console", true)
-	viper.SetDefault("log.file", true)
-	viper.SetDefault("log.colorConsole", true)
-	viper.SetDefault("log.maxAgeDays", 30)
-
-	// 认证默认配置
-	viper.SetDefault("auth.enabled", true)
-	viper.SetDefault("auth.adminUsername", "admin")
-	viper.SetDefault("auth.adminPassword", "admin123")
-	viper.SetDefault("auth.userDataDir", "runtime/server/data")
-
-	// 加密默认配置
-	viper.SetDefault("crypto.enabled", false)
-	viper.SetDefault("crypto.key", "")
-	viper.SetDefault("crypto.algorithm", "aes256gcm")
-
-	// 压缩默认配置
-	viper.SetDefault("compress.enabled", false)
-	viper.SetDefault("compress.level", 6)
-	viper.SetDefault("compress.algorithm", "gzip")
-
-	// 安全控制默认配置（默认启用，但规则为空时等于“全放行”，仅做基础限流/限大小/限连接）
-	viper.SetDefault("security.enabled", true)
-	viper.SetDefault("security.maxConnections", 50)
-	viper.SetDefault("security.maxMessageBytes", 2*1024*1024)     // 2MB
-	viper.SetDefault("security.maxRequestBodyBytes", 5*1024*1024) // 5MB
-	viper.SetDefault("security.rateLimitPerSecond", 50.0)
-	viper.SetDefault("security.rateBurst", 100)
-	viper.SetDefault("security.allowIPs", []string{})
-	viper.SetDefault("security.denyIPs", []string{})
-	viper.SetDefault("security.allowDomains", []string{})
-	viper.SetDefault("security.denyDomains", []string{})
-
-	// HTTP客户端默认配置（连接池复用）
-	viper.SetDefault("http.timeoutSeconds", 30)
-	viper.SetDefault("http.maxIdleConns", 200)
-	viper.SetDefault("http.maxIdleConnsPerHost", 50)
-	viper.SetDefault("http.idleConnTimeoutSeconds", 90)
-	viper.SetDefault("http.tlsHandshakeTimeoutSeconds", 10)
-	viper.SetDefault("http.expectContinueTimeoutSeconds", 1)
-	viper.SetDefault("http.proxyEnabled", false)
-	viper.SetDefault("http.proxyURL", "")
-
-	// 性能优化默认配置
-	viper.SetDefault("performance.workerPoolSize", 0) // 默认不使用worker池
-	viper.SetDefault("performance.requestQueueSize", 1000)
-	viper.SetDefault("performance.maxConcurrentConns", 0) // 不限制
-	viper.SetDefault("performance.bufferPoolSize", 100)
-	viper.SetDefault("performance.chunkSize", 65536) // 64KB
-	viper.SetDefault("performance.enableMetrics", true)
-	viper.SetDefault("performance.metricsIntervalSec", 30)
 }
 
 // validateConfig 验证配置
