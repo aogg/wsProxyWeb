@@ -21,12 +21,13 @@ jobs:
         run: |
           npm ci
           npm run build
-          tar -czf client-dist.tar.gz dist/
+          cd dist
+          zip -r ../wsproxy-client.zip  .
 
       - uses: actions/upload-artifact@v4
         with:
           name: client-dist
-          path: client/client-dist.tar.gz
+          path: client/wsproxy-client.zip
 
   release:
     needs: build
